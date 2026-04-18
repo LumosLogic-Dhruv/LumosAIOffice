@@ -10,9 +10,10 @@ const PublicNavbar = () => {
               <img src="/logo.png" alt="AI Office" className="h-12 md:h-16 object-contain" />
             </Link>
             <div className="hidden md:ml-10 md:flex md:space-x-8">
-              <a href="#features" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">Features</a>
-              <a href="#how-it-works" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">How it Works</a>
-              <a href="#pricing" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">Pricing</a>
+              <Link to="/" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">Home</Link>
+              <a href="/#features" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">Features</a>
+              <a href="/#how-it-works" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">How it Works</a>
+              <a href="/#pricing" className="text-gray-500 hover:text-gray-900 font-bold transition-colors">Pricing</a>
             </div>
           </div>
           <div className="flex items-center space-x-6">

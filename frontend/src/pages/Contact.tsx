@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import PublicNavbar from '../components/PublicNavbar';
+import PublicFooter from '../components/PublicFooter';
 import { Mail, Phone, MapPin, Send, Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -19,9 +20,9 @@ const Contact = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col">
       <PublicNavbar />
-      <main className="max-w-7xl mx-auto pt-40 pb-20 px-6">
+      <main className="max-w-7xl mx-auto pt-40 pb-20 px-6 flex-1">
         <div className="flex flex-col lg:flex-row gap-20">
           {/* Info Side */}
           <div className="flex-1 space-y-10">
@@ -120,13 +121,7 @@ const Contact = () => {
           </div>
         </div>
       </main>
-
-      <footer className="py-12 bg-gray-50 border-t border-gray-100 px-4 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center text-gray-500">
-          <div className="text-2xl font-bold text-primary mb-4 md:mb-0">AI Office</div>
-          <p>© 2026 AI Office Automation. All rights reserved.</p>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 };

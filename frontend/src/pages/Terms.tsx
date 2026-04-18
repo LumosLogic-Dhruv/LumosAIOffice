@@ -1,12 +1,13 @@
 import React from 'react';
 import PublicNavbar from '../components/PublicNavbar';
+import PublicFooter from '../components/PublicFooter';
 
 const Terms = () => {
   return (
-    <div className="min-h-screen bg-white text-gray-900">
+    <div className="min-h-screen bg-white text-gray-900 flex flex-col">
       <PublicNavbar />
-      <main className="max-w-4xl mx-auto pt-40 pb-20 px-6">
-        <h1 className="text-5xl font-black text-primary mb-10 tracking-tight">Terms of Service</h1>
+      <main className="max-w-4xl mx-auto pt-40 pb-20 px-6 flex-1">
+        <h1 className="text-5xl font-black text-primary mb-10 tracking-tight text-gray-900">Terms of Service</h1>
         
         <div className="space-y-8 text-lg text-gray-600 leading-relaxed font-medium">
           <section className="space-y-4">
@@ -45,13 +46,7 @@ const Terms = () => {
           </section>
         </div>
       </main>
-
-      <footer className="py-12 bg-gray-50 border-t border-gray-100 px-4 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center text-gray-500">
-          <div className="text-2xl font-bold text-primary mb-4 md:mb-0">AI Office</div>
-          <p>© 2026 AI Office Automation. All rights reserved.</p>
-        </div>
-      </footer>
+      <PublicFooter />
     </div>
   );
 };
