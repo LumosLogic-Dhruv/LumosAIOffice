@@ -10,8 +10,11 @@ interface ImportMeta {
 
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api';
 
+// Ensure the URL ends with /api if it doesn't already
+const normalizedURL = API_URL.endsWith('/api') ? API_URL : `${API_URL.replace(/\/$/, '')}/api`;
+
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: normalizedURL,
 });
 
 api.interceptors.request.use((config) => {
