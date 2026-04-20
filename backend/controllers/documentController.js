@@ -63,14 +63,17 @@ exports.processAI = async (req, res) => {
   try {
     const { type, rawText } = req.body;
     const company = await Company.findById(req.user.companyId);
-    
+
+    if (!company) {
+      return res.status(404).json({ message: 'Company profile not found. Please complete your profile.' });
+    }
+
     const aiData = await aiService.processAIDocument(
-      type, 
-      rawText, 
-      company.name, 
+      type,
+      rawText,
+      company.name,
       company.customFields
     );
-
     // Inject default terms if not provided by AI
     if (!aiData.terms) {
       aiData.terms = DEFAULT_TERMS[type] || company.defaultTerms;

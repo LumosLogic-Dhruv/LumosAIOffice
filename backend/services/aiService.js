@@ -12,8 +12,13 @@ exports.processAIDocument = async (type, rawText, companyName, customFields) => 
     });
     return response.data;
   } catch (error) {
-    console.error('AI Service Error:', error.message);
-    throw new Error('Failed to process AI document');
+    if (error.response) {
+      console.error('AI Service Error (Status):', error.response.status);
+      console.error('AI Service Error (Data):', error.response.data);
+    } else {
+      console.error('AI Service Error (Message):', error.message);
+    }
+    throw new Error('Failed to process AI document. Please check if AI service is running.');
   }
 };
 
@@ -27,7 +32,12 @@ exports.editAIDocument = async (type, instruction, existingData, customFields) =
     });
     return response.data;
   } catch (error) {
-    console.error('AI Service Edit Error:', error.message);
-    throw new Error('Failed to edit AI document');
+    if (error.response) {
+      console.error('AI Service Edit Error (Status):', error.response.status);
+      console.error('AI Service Edit Error (Data):', error.response.data);
+    } else {
+      console.error('AI Service Edit Error (Message):', error.message);
+    }
+    throw new Error('Failed to edit AI document.');
   }
 };

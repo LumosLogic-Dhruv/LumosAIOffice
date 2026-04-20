@@ -22,7 +22,7 @@ const CreateQuotation: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => 
     if (!rawText.trim()) return;
     setIsLoading(true);
     try {
-      const response = await quotationApi.post('/documents/process-ai', { raw_text: rawText, type: 'quotation' });
+      const response = await quotationApi.post('/documents/process-ai', { rawText: rawText, type: 'quotation' });
       const data = response.data;
       
       setFormData({
