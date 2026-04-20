@@ -9,6 +9,8 @@ load_dotenv()
 
 app = FastAPI(title="AI Office Document Automation Service")
 
+from google.api_core import exceptions
+
 @app.post("/generate-document")
 async def generate_document(data: GenerateDocumentRequest):
     try:
@@ -19,6 +21,8 @@ async def generate_document(data: GenerateDocumentRequest):
             data.custom_fields
         )
         return result
+    except exceptions.ResourceExhausted as e:
+        raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute or check your billing/API key.")
     except Exception as e:
         print("Error in AI Service (Generate):")
         traceback.print_exc()

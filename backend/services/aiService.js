@@ -15,10 +15,12 @@ exports.processAIDocument = async (type, rawText, companyName, customFields) => 
     if (error.response) {
       console.error('AI Service Error (Status):', error.response.status);
       console.error('AI Service Error (Data):', error.response.data);
+      // Throw the actual message from the AI service (e.g., Quota Exceeded)
+      throw new Error(error.response.data.detail || 'Failed to process AI document');
     } else {
       console.error('AI Service Error (Message):', error.message);
+      throw new Error('AI service is unreachable. Please check if it is running.');
     }
-    throw new Error('Failed to process AI document. Please check if AI service is running.');
   }
 };
 
