@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const AI_SERVICE_URL = process.env.PYTHON_SERVICE_URL || 'http://localhost:8000';
+const AI_SERVICE_URL = (process.env.PYTHON_SERVICE_URL || 'http://localhost:8000').replace(/\/$/, '');
 
 exports.processAIDocument = async (type, rawText, companyName, customFields) => {
   try {
