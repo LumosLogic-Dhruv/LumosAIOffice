@@ -22,18 +22,18 @@ const CreateQuotation: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => 
     if (!rawText.trim()) return;
     setIsLoading(true);
     try {
-      const response = await quotationApi.processAI(rawText);
+      const response = await quotationApi.post('/documents/process-ai', { raw_text: rawText, type: 'quotation' });
       const data = response.data;
       
       setFormData({
         ...formData,
-        clientName: data.clientName,
-        projectName: data.project,
-        overview: data.overview,
-        timeline: data.timeline,
-        features: data.features,
-        costBreakdown: data.costBreakdown,
-        totalCost: data.total
+        clientName: data.clientName || '',
+        projectName: data.project || '',
+        overview: data.overview || '',
+        timeline: data.timeline || '',
+        features: data.features || [],
+        costBreakdown: data.costBreakdown || [],
+        totalCost: data.total || 0
       });
       setIsAiMode(false);
     } catch (error) {
@@ -73,7 +73,7 @@ const CreateQuotation: React.FC<{ onSuccess: () => void }> = ({ onSuccess }) => 
     e.preventDefault();
     setIsLoading(true);
     try {
-      await quotationApi.create(formData);
+      await quotationApi.post('/documents', formData);
       alert('Quotation saved successfully!');
       onSuccess();
     } catch (error) {
