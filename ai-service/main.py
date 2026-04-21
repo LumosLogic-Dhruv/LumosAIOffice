@@ -22,8 +22,10 @@ async def generate_document(data: GenerateDocumentRequest):
         )
         return result
     except errors.APIError as e:
-        if e.code == 429:
+        if getattr(e, 'code', None) == 429:
             raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute or check your billing/API key.")
+        if getattr(e, 'code', None) == 503:
+            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again in a few moments.")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         print("Error in AI Service (Generate):")
@@ -41,8 +43,10 @@ async def edit_document(data: EditDocumentRequest):
         )
         return result
     except errors.APIError as e:
-        if e.code == 429:
+        if getattr(e, 'code', None) == 429:
             raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute or check your billing/API key.")
+        if getattr(e, 'code', None) == 503:
+            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again in a few moments.")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         print("Error in AI Service (Edit):")
