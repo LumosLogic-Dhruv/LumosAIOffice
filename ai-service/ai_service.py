@@ -1,12 +1,45 @@
 import os
 import json
+import asyncio
 from google import genai
 from google.genai import types
+from google.genai import errors
 from dotenv import load_dotenv
 
 load_dotenv()
 
 client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+async def _generate_with_retry(prompt, max_retries=5):
+    """Helper function to retry Gemini API calls with exponential backoff."""
+    delay = 2
+    for attempt in range(max_retries):
+        try:
+            # We use the async client if available, otherwise fallback to sync
+            if hasattr(client, 'aio'):
+                response = await client.aio.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                    )
+                )
+            else:
+                response = client.models.generate_content(
+                    model='gemini-2.5-flash',
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                    )
+                )
+            return response
+        except errors.APIError as e:
+            if getattr(e, 'code', None) in [429, 503] and attempt < max_retries - 1:
+                print(f"Gemini API returned {e.code}. Retrying in {delay} seconds... (Attempt {attempt+1}/{max_retries})")
+                await asyncio.sleep(delay)
+                delay *= 2
+            else:
+                raise e
 
 async def generate_document_data(doc_type, raw_text, company_name, custom_fields):
     
@@ -55,13 +88,7 @@ async def generate_document_data(doc_type, raw_text, company_name, custom_fields
     Ensure all amounts are numbers where possible.
     """
 
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        )
-    )
+    response = await _generate_with_retry(prompt)
     return json.loads(response.text)
 
 async def edit_document_data(doc_type, instruction, existing_data, custom_fields):
@@ -76,11 +103,5 @@ async def edit_document_data(doc_type, instruction, existing_data, custom_fields
     Return the FULL updated JSON object maintaining the original structure.
     """
 
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-        )
-    )
+    response = await _generate_with_retry(prompt)
     return json.loads(response.text)
