@@ -1,14 +1,14 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 async def generate_document_data(doc_type, raw_text, company_name, custom_fields):
-    model = genai.GenerativeModel('gemini-2.5-flash')
     
     custom_fields_str = ", ".join([f"{f['fieldName']} ({f['fieldType']})" for f in custom_fields]) if custom_fields else "None"
     
@@ -55,11 +55,16 @@ async def generate_document_data(doc_type, raw_text, company_name, custom_fields
     Ensure all amounts are numbers where possible.
     """
 
-    response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+    )
     return json.loads(response.text)
 
 async def edit_document_data(doc_type, instruction, existing_data, custom_fields):
-    model = genai.GenerativeModel('gemini-2.5-flash')
     
     prompt = f"""
     You are an AI editor. Update the following {doc_type} data based on the user's instruction.
@@ -71,5 +76,11 @@ async def edit_document_data(doc_type, instruction, existing_data, custom_fields
     Return the FULL updated JSON object maintaining the original structure.
     """
 
-    response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+    response = client.models.generate_content(
+        model='gemini-2.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
+    )
     return json.loads(response.text)
