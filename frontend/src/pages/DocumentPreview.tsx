@@ -2,21 +2,28 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { 
-  Download, 
-  History, 
-  Sparkles, 
-  Loader2, 
-  FileText, 
-  Eye, 
+import { useAuth } from '../context/AuthContext';
+import {
+  Download,
+  History,
+  Sparkles,
+  Loader2,
+  FileText,
+  Eye,
   ArrowLeft,
   Edit3,
   Save,
-  X
+  X,
+  Share2,
+  Copy,
+  Check,
+  Lock,
+  Users
 } from 'lucide-react';
 
 const DocumentPreview = () => {
   const { id } = useParams();
+  const { user } = useAuth();
   const [document, setDocument] = useState<any>(null);
   const [company, setCompany] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -25,9 +32,15 @@ const DocumentPreview = () => {
   const [editingAI, setEditingAI] = useState(false);
   const [isManualEdit, setIsManualEdit] = useState(false);
   const [isSavingManual, setIsSavingManual] = useState(false);
-  
+
   // Local state for editing everything
   const [tempDoc, setTempDoc] = useState<any>(null);
+  const [sharing, setSharing] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [updatingPerm, setUpdatingPerm] = useState(false);
+
+  const isOwner = user?.role === 'admin';
 
   useEffect(() => {
     fetchData();
@@ -78,6 +91,23 @@ const DocumentPreview = () => {
     }
   };
 
+  const handleShare = async () => {
+    setSharing(true);
+    try {
+      const res = await api.post(`/documents/${id}/share`);
+      const token = res.data.shareToken;
+      const shareUrl = `${window.location.origin}/shared/${token}`;
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+      toast.success('Share link copied to clipboard!');
+    } catch {
+      toast.error('Failed to create share link');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const handleManualSave = async () => {
     setIsSavingManual(true);
     try {
@@ -93,6 +123,22 @@ const DocumentPreview = () => {
       toast.error('Failed to save document');
     } finally {
       setIsSavingManual(false);
+    }
+  };
+
+  const handlePermissionToggle = async (newPerm: 'all' | 'owner_only') => {
+    setUpdatingPerm(true);
+    try {
+      const res = await api.put(`/documents/${id}`, {
+        data: { ...document.data, editPermission: newPerm },
+      });
+      setDocument(res.data);
+      setTempDoc(JSON.parse(JSON.stringify(res.data)));
+      toast.success(newPerm === 'owner_only' ? 'Edit locked to owner only' : 'Edit access opened to all members');
+    } catch {
+      toast.error('Failed to update permissions');
+    } finally {
+      setUpdatingPerm(false);
     }
   };
 
@@ -122,29 +168,40 @@ const DocumentPreview = () => {
           {!isManualEdit ? (
             <button
               onClick={() => setIsManualEdit(true)}
-              className="flex items-center space-x-2 px-6 py-3 bg-gray-900 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-black transition-all shadow-lg"
+              className="flex items-center space-x-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all"
+              style={{ borderColor: '#714B67', color: '#714B67' }}
             >
               <Edit3 size={18} />
               <span>Manual Edit</span>
             </button>
           ) : (
             <div className="flex gap-2">
-               <button
+              <button
                 onClick={handleManualSave}
                 disabled={isSavingManual}
-                className="flex items-center space-x-2 px-6 py-3 bg-green-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-green-700 transition-all shadow-lg disabled:opacity-50"
+                style={{ backgroundColor: '#714B67' }}
+                className="flex items-center space-x-2 px-6 py-3 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all shadow-lg disabled:opacity-50"
               >
                 {isSavingManual ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
                 <span>{isSavingManual ? 'Saving...' : 'Save'}</span>
               </button>
               <button
                 onClick={() => { setIsManualEdit(false); setTempDoc(JSON.parse(JSON.stringify(document))); }}
-                className="flex items-center space-x-2 px-6 py-3 bg-red-100 text-red-600 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-red-200 transition-all"
+                className="flex items-center space-x-2 px-6 py-3 border-2 border-gray-200 text-gray-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
               >
                 <X size={18} />
               </button>
             </div>
           )}
+
+          <button
+            onClick={handleShare}
+            disabled={sharing}
+            className="flex items-center space-x-2 px-4 py-3 border-2 border-gray-100 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all text-gray-600"
+          >
+            {shareCopied ? <Check size={16} className="text-green-500" /> : sharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
+            <span>{shareCopied ? 'Copied!' : 'Share'}</span>
+          </button>
 
           <button
             onClick={handleGeneratePdf}
@@ -157,15 +214,14 @@ const DocumentPreview = () => {
           </button>
 
           {document.pdfUrl && (
-            <a 
-              href={document.pdfUrl} 
-              target="_blank" 
-              rel="noreferrer"
-              className="flex items-center space-x-2 px-6 py-3 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg"
+            <button
+              onClick={() => setShowPdfModal(true)}
+              className="flex items-center space-x-2 px-6 py-3 border-2 rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-80 transition-all"
+              style={{ borderColor: '#714B67', color: '#714B67' }}
             >
               <Eye size={18} />
               <span>View PDF</span>
-            </a>
+            </button>
           )}
         </div>
       </div>
@@ -224,14 +280,14 @@ const DocumentPreview = () => {
                   <div className="text-right">
                     <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Date Issued</p>
                     {isManualEdit ? (
-                      <input 
+                      <input
                         type="date"
                         className="text-lg font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
-                        value={new Date(tempDoc.createdAt).toISOString().split('T')[0]}
-                        onChange={(e) => setTempDoc({ ...tempDoc, createdAt: new Date(e.target.value).toISOString() })}
+                        value={new Date(tempDoc._creationTime ?? Date.now()).toISOString().split('T')[0]}
+                        onChange={(e) => setTempDoc({ ...tempDoc, _creationTime: new Date(e.target.value).getTime() })}
                       />
                     ) : (
-                      <p className="text-lg font-black text-gray-900">{new Date(tempDoc.createdAt).toLocaleDateString()}</p>
+                      <p className="text-lg font-black text-gray-900">{new Date(tempDoc._creationTime ?? Date.now()).toLocaleDateString()}</p>
                     )}
                   </div>
                </div>
@@ -277,18 +333,18 @@ const DocumentPreview = () => {
                      <table className="w-full text-left border-collapse">
                        <thead>
                          <tr style={{ backgroundColor: '#714B67' }}>
-                           {table.headers.map((h: string, i: number) => (
+                           {(Array.isArray(table.headers) ? table.headers : Object.values(table.headers || {})).map((h: any, i: number) => (
                              <th key={i} className="p-5 text-white font-black uppercase text-xs tracking-widest">{h}</th>
                            ))}
                          </tr>
                        </thead>
                        <tbody className="divide-y divide-gray-100">
-                         {table.rows.map((row: any[], i: number) => (
+                         {(Array.isArray(table.rows) ? table.rows : []).map((row: any, i: number) => (
                            <tr key={i} className="hover:bg-gray-50/50">
-                             {row.map((cell, j) => (
+                             {(Array.isArray(row) ? row : Object.values(row || {})).map((cell: any, j: number) => (
                                <td key={j} className="p-5">
                                  {isManualEdit ? (
-                                   <input 
+                                   <input
                                      className="w-full bg-transparent font-bold text-gray-700 outline-none"
                                      value={cell}
                                      onChange={(e) => {
@@ -311,7 +367,7 @@ const DocumentPreview = () => {
                ))}
 
                {/* Summary */}
-               {tempDoc.data.summary && (
+               {tempDoc.data.summary && typeof tempDoc.data.summary === 'object' && Object.keys(tempDoc.data.summary).length > 0 && (
                  <div className="flex justify-end pt-10">
                    <div className="w-80 space-y-4 p-8 rounded-4xl bg-gray-50/50 border border-gray-100">
                      {Object.entries(tempDoc.data.summary).map(([k, v]: [string, any]) => (
@@ -403,8 +459,70 @@ const DocumentPreview = () => {
               </p>
             )}
           </div>
+
+          {/* Permission control — owner only */}
+          {isOwner && (
+            <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="p-2 bg-gray-100 rounded-xl">
+                  <Lock size={18} className="text-gray-500" />
+                </div>
+                <h3 className="text-sm font-black text-gray-900">Edit Access</h3>
+              </div>
+              <p className="text-xs text-gray-400 mb-4 leading-relaxed">Control who can edit this document.</p>
+              <div className="flex flex-col gap-2">
+                {(['all', 'owner_only'] as const).map((perm) => {
+                  const active = (document?.data?.editPermission || 'all') === perm;
+                  return (
+                    <button
+                      key={perm}
+                      onClick={() => handlePermissionToggle(perm)}
+                      disabled={updatingPerm || active}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                      style={active
+                        ? { backgroundColor: '#714B67', color: '#fff' }
+                        : { border: '2px solid #e5e7eb', color: '#6b7280' }}
+                    >
+                      {perm === 'all' ? <Users size={13} /> : <Lock size={13} />}
+                      {perm === 'all' ? 'All Members Can Edit' : 'Owner Only'}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* PDF Viewer Modal */}
+      {showPdfModal && document.pdfUrl && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+          <div className="flex items-center justify-between px-6 py-3 bg-gray-900 shrink-0">
+            <p className="text-white font-bold text-sm truncate max-w-md">{document.title}</p>
+            <div className="flex items-center gap-4">
+              <a
+                href={document.pdfUrl}
+                download
+                className="flex items-center gap-1.5 text-white/60 hover:text-white text-xs font-semibold transition-colors"
+              >
+                <Download size={14} />
+                Download
+              </a>
+              <button
+                onClick={() => setShowPdfModal(false)}
+                className="text-white/60 hover:text-white font-bold text-sm transition-colors flex items-center gap-1.5"
+              >
+                <X size={16} /> Close
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={document.pdfUrl}
+            className="flex-1 w-full border-0"
+            title="PDF Preview"
+          />
+        </div>
+      )}
     </div>
   );
 };

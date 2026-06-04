@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Building2, Mail, Phone, MapPin, Globe, Fingerprint, Upload, Loader2, Save, Check } from 'lucide-react';
+import { Building2, Mail, Phone, MapPin, Globe, Fingerprint, Upload, Loader2, Save } from 'lucide-react';
+
+const BRAND = '#714B67';
 
 const CompanyProfile = () => {
   const [profile, setProfile] = useState<any>(null);
@@ -17,7 +19,7 @@ const CompanyProfile = () => {
     try {
       const response = await api.get('/company');
       setProfile(response.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load profile');
     } finally {
       setLoading(false);
@@ -30,7 +32,7 @@ const CompanyProfile = () => {
     try {
       await api.put('/company/update', profile);
       toast.success('Profile updated successfully');
-    } catch (error) {
+    } catch {
       toast.error('Update failed');
     } finally {
       setUpdating(false);
@@ -39,16 +41,14 @@ const CompanyProfile = () => {
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files?.[0]) return;
-    
     const formData = new FormData();
     formData.append('logo', e.target.files[0]);
-
     setUploading(true);
     try {
       const response = await api.put('/company/logo', formData);
       setProfile(response.data);
-      toast.success('Logo updated successfully');
-    } catch (error) {
+      toast.success('Logo updated');
+    } catch {
       toast.error('Logo upload failed');
     } finally {
       setUploading(false);
@@ -57,121 +57,96 @@ const CompanyProfile = () => {
 
   if (loading) return (
     <div className="h-full flex items-center justify-center">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#714B67' }}></div>
+      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: BRAND }}></div>
     </div>
   );
 
   return (
-    <div className="max-w-5xl mx-auto space-y-10">
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-4xl font-black text-gray-900 tracking-tight">Company Profile</h1>
-          <p className="text-gray-400 font-bold uppercase text-xs tracking-widest mt-2">Manage your business identity</p>
-        </div>
+    <div className="max-w-3xl mx-auto space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Company Profile</h1>
+        <p className="text-xs text-gray-400 mt-0.5">Manage your business identity and branding</p>
       </div>
 
-      <div className="bg-white rounded-[40px] shadow-sm border border-gray-100 overflow-hidden">
-        {/* Banner/Header */}
-        <div className="h-32 bg-gray-50/50 border-b border-gray-100 relative">
-          <div className="absolute -bottom-12 left-10">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Banner */}
+        <div className="h-24 bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-100 relative">
+          <div className="absolute -bottom-10 left-6">
             <div className="relative group">
-              <div className="w-32 h-32 rounded-3xl bg-white shadow-xl border-4 border-white flex items-center justify-center overflow-hidden">
+              <div className="w-20 h-20 rounded-xl bg-white shadow-md border-2 border-white flex items-center justify-center overflow-hidden">
                 {profile?.logoUrl ? (
-                  <img src={profile.logoUrl} alt="Logo" className="w-full h-full object-contain p-2" />
+                  <img src={profile.logoUrl} alt="Logo" className="w-full h-full object-contain p-1" />
                 ) : (
-                  <Building2 size={40} className="text-gray-200" />
+                  <Building2 size={28} className="text-gray-200" />
                 )}
                 {uploading && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center backdrop-blur-sm">
-                    <Loader2 className="text-white animate-spin" />
+                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                    <Loader2 className="text-white animate-spin" size={18} />
                   </div>
                 )}
               </div>
-              <label className="absolute -bottom-2 -right-2 p-3 text-white rounded-2xl cursor-pointer shadow-xl hover:scale-110 transition-all" style={{ backgroundColor: '#714B67' }}>
-                <Upload size={18} strokeWidth={3} />
+              <label className="absolute -bottom-1 -right-1 p-1.5 text-white rounded-lg cursor-pointer shadow-md hover:opacity-90 transition-all" style={{ backgroundColor: BRAND }}>
+                <Upload size={12} strokeWidth={3} />
                 <input type="file" className="hidden" onChange={handleLogoUpload} accept="image/*" />
               </label>
             </div>
           </div>
         </div>
 
-        <form onSubmit={handleUpdate} className="p-12 pt-20 space-y-10">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-8">
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <Building2 size={14} className="mr-2" /> Company Name
-              </label>
-              <input
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700"
-                value={profile?.name || ''}
-                onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <Mail size={14} className="mr-2" /> Business Email
-              </label>
-              <input
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700"
-                value={profile?.email || ''}
-                onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <Phone size={14} className="mr-2" /> Contact Phone
-              </label>
-              <input
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700"
-                value={profile?.phone || ''}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <Globe size={14} className="mr-2" /> Website URL
-              </label>
-              <input
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700"
-                value={profile?.website || ''}
-                onChange={(e) => setProfile({ ...profile, website: e.target.value })}
-              />
-            </div>
-            <div className="space-y-3 md:col-span-2">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <MapPin size={14} className="mr-2" /> Office Address
+        <form onSubmit={handleUpdate} className="px-6 pt-14 pb-6 space-y-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+            {[
+              { icon: Building2, label: 'Company Name', key: 'name', type: 'text' },
+              { icon: Mail, label: 'Business Email', key: 'email', type: 'email' },
+              { icon: Phone, label: 'Contact Phone', key: 'phone', type: 'tel' },
+              { icon: Globe, label: 'Website URL', key: 'website', type: 'url' },
+              { icon: Fingerprint, label: 'GST / TAX Number', key: 'gstNumber', type: 'text' },
+            ].map(({ icon: Icon, label, key, type }) => (
+              <div key={key} className="space-y-1.5">
+                <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
+                  <Icon size={12} />
+                  {label}
+                </label>
+                <input
+                  type={type}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:border-transparent outline-none transition-all bg-gray-50 text-gray-700"
+                  style={{ '--tw-ring-color': `${BRAND}30` } as any}
+                  onFocus={e => e.target.style.borderColor = BRAND}
+                  onBlur={e => e.target.style.borderColor = ''}
+                  value={profile?.[key] || ''}
+                  onChange={(e) => setProfile({ ...profile, [key]: e.target.value })}
+                />
+              </div>
+            ))}
+
+            <div className="space-y-1.5 md:col-span-2">
+              <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5">
+                <MapPin size={12} />
+                Office Address
               </label>
               <textarea
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700 h-32 resize-none"
+                className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 outline-none transition-all bg-gray-50 text-gray-700 h-20 resize-none"
+                onFocus={e => e.target.style.borderColor = BRAND}
+                onBlur={e => e.target.style.borderColor = ''}
                 value={profile?.address || ''}
                 onChange={(e) => setProfile({ ...profile, address: e.target.value })}
               />
             </div>
-            <div className="space-y-3">
-              <label className="text-xs font-black text-gray-400 uppercase tracking-widest ml-1 flex items-center">
-                <Fingerprint size={14} className="mr-2" /> GST / TAX Number
-              </label>
-              <input
-                className="w-full p-4 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all bg-gray-50/50 font-bold text-gray-700"
-                value={profile?.gstNumber || ''}
-                onChange={(e) => setProfile({ ...profile, gstNumber: e.target.value })}
-              />
-            </div>
           </div>
 
-          <div className="pt-10 border-t border-gray-100 flex justify-end">
+          <div className="pt-4 border-t border-gray-100 flex justify-end">
             <button
               type="submit"
               disabled={updating}
-              style={{ backgroundColor: '#714B67' }}
-              className="px-12 py-5 text-white rounded-[20px] font-black text-lg hover:opacity-90 transition-all disabled:opacity-50 flex items-center space-x-3 shadow-xl shadow-primary/20"
+              style={{ backgroundColor: BRAND }}
+              className="px-6 py-2.5 text-white rounded-lg font-semibold text-sm hover:opacity-90 transition-all disabled:opacity-50 flex items-center gap-2 shadow"
             >
               {updating ? (
-                <Loader2 className="animate-spin" size={24} />
+                <Loader2 className="animate-spin" size={16} />
               ) : (
-                <Save size={24} />
+                <Save size={16} />
               )}
-              <span>SAVE PROFILE CHANGES</span>
+              Save Changes
             </button>
           </div>
         </form>

@@ -1,17 +1,12 @@
 import axios from 'axios';
 
-interface ImportMetaEnv {
-  readonly VITE_API_URL: string;
-}
+const CLOUD_RUN_URL = 'https://docflowai-874559728801.asia-south1.run.app';
 
-interface ImportMeta {
-  readonly env: ImportMetaEnv;
-}
+const base = (import.meta as any).env.PROD
+  ? CLOUD_RUN_URL
+  : ((import.meta as any).env.VITE_API_URL || 'http://localhost:5000');
 
-const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api';
-
-// Ensure the URL ends with /api if it doesn't already
-const normalizedURL = API_URL.endsWith('/api') ? API_URL : `${API_URL.replace(/\/$/, '')}/api`;
+const normalizedURL = base.endsWith('/api') ? base : `${base.replace(/\/$/, '')}/api`;
 
 const api = axios.create({
   baseURL: normalizedURL,

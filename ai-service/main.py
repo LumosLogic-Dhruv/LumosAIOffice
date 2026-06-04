@@ -1,64 +1,85 @@
 import os
 import traceback
-from fastapi import FastAPI, HTTPException
+
+import services.cloudinary_service  # noqa: F401 — initializes Cloudinary on startup
 from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from google.genai import errors as genai_errors
+
 import ai_service
-from schema import GenerateDocumentRequest, EditDocumentRequest
+from routers import auth, company, documents, admin, clients, catalog
+from schema import EditDocumentRequest, GenerateDocumentRequest
 
 load_dotenv()
 
-app = FastAPI(title="AI Office Document Automation Service")
+if not os.getenv("JWT_SECRET"):
+    raise RuntimeError("FATAL: JWT_SECRET is not defined in .env")
 
-from google.genai import errors
+app = FastAPI(title="DocuFlow AI Backend", redirect_slashes=False)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ── Existing AI-only endpoints (kept for direct access / testing) ──────────────
 
 @app.post("/generate-document")
 async def generate_document(data: GenerateDocumentRequest):
     try:
-        result = await ai_service.generate_document_data(
-            data.type, 
-            data.raw_text, 
-            data.company_name, 
-            data.custom_fields
+        return await ai_service.generate_document_data(
+            data.type, data.raw_text, data.company_name, data.custom_fields
         )
-        return result
-    except errors.APIError as e:
-        if getattr(e, 'code', None) == 429:
-            raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute or check your billing/API key.")
-        if getattr(e, 'code', None) == 503:
-            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again in a few moments.")
+    except genai_errors.APIError as e:
+        code = getattr(e, "code", None)
+        if code == 429:
+            raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute.")
+        if code == 503:
+            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        print("Error in AI Service (Generate):")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.post("/edit-document")
 async def edit_document(data: EditDocumentRequest):
     try:
-        result = await ai_service.edit_document_data(
-            data.type, 
-            data.instruction, 
-            data.existing_data,
-            data.custom_fields
+        return await ai_service.edit_document_data(
+            data.type, data.instruction, data.existing_data, data.custom_fields
         )
-        return result
-    except errors.APIError as e:
-        if getattr(e, 'code', None) == 429:
-            raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute or check your billing/API key.")
-        if getattr(e, 'code', None) == 503:
-            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again in a few moments.")
+    except genai_errors.APIError as e:
+        code = getattr(e, "code", None)
+        if code == 429:
+            raise HTTPException(status_code=429, detail="Gemini API Quota Exceeded. Please try again in a minute.")
+        if code == 503:
+            raise HTTPException(status_code=503, detail="Gemini API is currently overloaded. Please try again.")
         raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        print("Error in AI Service (Edit):")
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/")
-def read_root():
-    return {"message": "AI Document Automation Service is online"}
+def health_check():
+    return {"message": "QuotationMaker Unified Backend is online"}
+
+
+# ── API routers ────────────────────────────────────────────────────────────────
+
+app.include_router(auth.router)
+app.include_router(company.router)
+app.include_router(documents.router)
+app.include_router(admin.router)
+app.include_router(clients.router)
+app.include_router(catalog.router)
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 8000))
+
+    port = int(os.environ.get("PORT", 5000))
     uvicorn.run(app, host="0.0.0.0", port=port)

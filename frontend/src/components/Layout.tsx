@@ -1,88 +1,92 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { 
-  LayoutDashboard, 
-  FileText, 
-  Settings, 
-  LogOut, 
-  PlusCircle, 
-  User 
-} from 'lucide-react';
+import { LayoutDashboard, FileText, User, LogOut, PlusCircle, Users, BookOpen, UserCog } from 'lucide-react';
 import { clsx } from 'clsx';
+import Logo from './Logo';
 
 const Layout = () => {
   const { logout, user } = useAuth();
-  const navigate = useNavigate();
   const location = useLocation();
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: PlusCircle, label: 'Create Document', path: '/dashboard/documents/create' },
+    { icon: FileText, label: 'My Documents', path: '/dashboard/documents' },
+    { icon: Users, label: 'Clients', path: '/dashboard/clients' },
+    { icon: BookOpen, label: 'Catalog', path: '/dashboard/catalog' },
+    { icon: UserCog, label: 'Team', path: '/dashboard/team' },
     { icon: User, label: 'Company Profile', path: '/dashboard/profile' },
   ];
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-gray-50">
       {/* Sidebar */}
-      <div className="w-72 flex flex-col shadow-2xl z-20" style={{ backgroundColor: '#714B67' }}>
-        <div className="p-8 border-b border-white/10 flex justify-center">
-           <Link to="/dashboard" className="bg-white p-2 rounded-xl shadow-xl w-full flex justify-center">
-              <img src="/logo.png" alt="AI Office" className="h-10 object-contain" />
-           </Link>
+      <aside className="w-56 flex flex-col shadow-lg z-20 shrink-0" style={{ backgroundColor: '#714B67' }}>
+        {/* Logo */}
+        <div className="px-4 py-4 border-b border-white/10">
+          <Link to="/dashboard">
+            <Logo size="sm" onDark />
+          </Link>
         </div>
-        <nav className="flex-1 p-6 space-y-3 mt-4">
+
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5">
           {menuItems.map((item) => {
-            const isActive = location.pathname === item.path;
+            const isActive = location.pathname === item.path ||
+              (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
             return (
               <Link
                 key={item.path}
                 to={item.path}
                 className={clsx(
-                  "flex items-center space-x-4 p-4 rounded-2xl transition-all duration-300 group",
-                  isActive 
-                    ? "bg-white text-primary shadow-xl shadow-black/20 font-black scale-105" 
-                    : "text-white/70 hover:bg-white/10 hover:text-white"
+                  'flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-150 text-sm font-medium',
+                  isActive
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-white/70 hover:bg-white/10 hover:text-white'
                 )}
               >
-                <item.icon size={isActive ? 24 : 22} style={isActive ? { color: '#714B67' } : {}} />
-                <span className="text-lg tracking-tight">{item.label}</span>
+                <item.icon
+                  size={16}
+                  style={isActive ? { color: '#714B67' } : {}}
+                />
+                <span>{item.label}</span>
               </Link>
             );
           })}
         </nav>
-        
-        <div className="p-6 border-t border-white/10">
+
+        {/* Logout */}
+        <div className="px-3 py-4 border-t border-white/10">
           <button
             onClick={logout}
-            className="w-full p-4 flex items-center justify-center space-x-3 bg-red-500/10 hover:bg-red-500 text-red-200 hover:text-white rounded-2xl transition-all duration-300 border border-red-500/20 font-bold"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-white/60 hover:bg-white/10 hover:text-white transition-all text-sm font-medium"
           >
-            <LogOut size={20} />
-            <span>LOGOUT</span>
+            <LogOut size={16} />
+            <span>Sign Out</span>
           </button>
         </div>
-      </div>
+      </aside>
 
-      {/* Main Content Area */}
-      <div className="flex-1 flex flex-col overflow-hidden bg-gray-50/30">
-        <header className="bg-white border-b border-gray-100 p-8 flex justify-between items-center px-12 shadow-sm z-10">
+      {/* Main */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Top bar */}
+        <header className="h-14 bg-white border-b border-gray-100 flex items-center justify-between px-6 shrink-0 shadow-sm">
           <div>
-            <h2 className="text-3xl font-black text-gray-900 tracking-tight">
-              Welcome, <span style={{ color: '#714B67' }}>{user?.name}</span>
-            </h2>
-            <p className="text-gray-400 font-bold text-sm uppercase tracking-widest mt-1">
-              Your document command center
+            <p className="text-xs font-medium text-gray-400">
+              Welcome back,{' '}
+              <span className="font-semibold" style={{ color: '#714B67' }}>{user?.name}</span>
             </p>
           </div>
-          
-          <div className="flex items-center space-x-6 bg-gray-50 p-3 rounded-3xl border border-gray-100">
-            <div className="text-right hidden sm:block px-2">
-              <p className="text-sm font-black text-gray-900 leading-none">{user?.email}</p>
-              <p className="text-xs font-bold uppercase tracking-tighter mt-1" style={{ color: '#714B67' }}>
-                {user?.role} Account
+
+          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+            <div className="text-right hidden sm:block">
+              <p className="text-xs font-semibold text-gray-700 leading-none">{user?.email}</p>
+              <p className="text-[10px] font-medium uppercase tracking-wider mt-0.5" style={{ color: '#714B67' }}>
+                {user?.role}
               </p>
             </div>
-            <div 
-              className="w-14 h-14 text-white rounded-2xl flex items-center justify-center font-black text-2xl shadow-lg"
+            <div
+              className="w-7 h-7 rounded-md flex items-center justify-center font-bold text-white text-xs shadow-sm"
               style={{ backgroundColor: '#714B67' }}
             >
               {user?.name?.[0].toUpperCase()}
@@ -90,8 +94,8 @@ const Layout = () => {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-12 custom-scrollbar">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto p-6">
+          <div className="max-w-6xl mx-auto">
             <Outlet />
           </div>
         </main>
