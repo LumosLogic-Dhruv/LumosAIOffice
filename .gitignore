@@ -19,3 +19,10 @@ yarn-error.log*
 .idea/
 *.swp
 *.swo
+
+# Firebase CLI cache
+.firebase/
+
+# Legacy / unused files
+ai-service/database.py
+backend/
