@@ -30,6 +30,20 @@ DEFAULT_TERMS: dict[str, str] = {
 }
 
 
+async def _log_activity(current_user: dict, document: dict, action: str):
+    try:
+        await convex_client.mutation("activityLogs:log", {
+            "companyId": current_user["companyId"],
+            "userId": current_user["_id"],
+            "userName": current_user.get("name", "Unknown"),
+            "documentId": document["_id"],
+            "documentTitle": document.get("title", "Untitled"),
+            "action": action,
+        })
+    except Exception:
+        pass
+
+
 async def _sync_pdf(company: dict, document: dict) -> dict:
     try:
         old_pid = document.get("cloudinaryPdfPublicId")
@@ -113,7 +127,28 @@ async def get_document(doc_id: str, current_user: dict = Depends(get_current_use
     doc = await convex_client.query("documents:getById", {"id": doc_id})
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
+    await _log_activity(current_user, doc, "viewed")
     return doc
+
+
+class UpdatePermissionRequest(BaseModel):
+    permission: str  # "all" | "owner_only"
+
+
+@router.put("/{doc_id}/permission")
+async def update_document_permission(
+    doc_id: str,
+    req: UpdatePermissionRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the owner can change document permissions")
+    doc = await convex_client.query("documents:getById", {"id": doc_id})
+    if not doc or doc["companyId"] != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    new_data = {**(doc.get("data") or {}), "editPermission": req.permission}
+    updated = await convex_client.mutation("documents:update", {"id": doc_id, "data": new_data})
+    return updated
 
 
 class UpdateDocumentRequest(BaseModel):
@@ -155,6 +190,7 @@ async def update_document(
     updated = await convex_client.mutation("documents:update", update_args)
     company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
     updated = await _sync_pdf(company, updated)
+    await _log_activity(current_user, updated, "edited")
     return updated
 
 
@@ -201,6 +237,7 @@ async def edit_ai(doc_id: str, req: EditAIRequest, current_user: dict = Depends(
     })
 
     updated = await _sync_pdf(company, updated)
+    await _log_activity(current_user, updated, "ai_edited")
     return updated
 
 
@@ -228,6 +265,7 @@ async def delete_document(doc_id: str, current_user: dict = Depends(get_current_
     doc = await convex_client.query("documents:getById", {"id": doc_id})
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
+    await _log_activity(current_user, doc, "deleted")
     await convex_client.mutation("documents:remove", {"id": doc_id})
     return {"success": True}
 
@@ -244,6 +282,7 @@ async def duplicate_document(doc_id: str, current_user: dict = Depends(get_curre
         "clientName": doc["clientName"],
         "data": doc["data"],
     })
+    await _log_activity(current_user, doc, "duplicated")
     return new_doc
 
 
@@ -255,6 +294,7 @@ async def create_share_link(doc_id: str, current_user: dict = Depends(get_curren
 
     token = doc.get("shareToken") or secrets.token_urlsafe(20)
     await convex_client.mutation("documents:update", {"id": doc_id, "shareToken": token})
+    await _log_activity(current_user, doc, "shared")
     return {"shareToken": token}
 
 

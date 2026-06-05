@@ -32,8 +32,16 @@ const Layout = () => {
         {/* Nav */}
         <nav className="flex-1 px-3 py-4 space-y-0.5">
           {menuItems.map((item) => {
-            const isActive = location.pathname === item.path ||
-              (item.path !== '/dashboard' && location.pathname.startsWith(item.path));
+            const isActive = (() => {
+              if (location.pathname === item.path) return true;
+              if (item.path === '/dashboard') return false;
+              // "My Documents" should not be active when on the create page
+              if (item.path === '/dashboard/documents') {
+                return location.pathname.startsWith('/dashboard/documents/') &&
+                  location.pathname !== '/dashboard/documents/create';
+              }
+              return location.pathname.startsWith(item.path);
+            })();
             return (
               <Link
                 key={item.path}

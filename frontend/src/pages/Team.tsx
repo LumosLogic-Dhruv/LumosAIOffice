@@ -2,7 +2,11 @@ import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { Users, Copy, Check, Plus, Trash2, RefreshCw, Link as LinkIcon, Shield, User } from 'lucide-react';
+import {
+  Users, Copy, Check, Plus, Trash2, RefreshCw, Link as LinkIcon,
+  Shield, User, Activity, Eye, Edit3, Share2, FileText, Sparkles,
+  Clock, Lock, Unlock, Loader2
+} from 'lucide-react';
 
 const BRAND = '#714B67';
 
@@ -14,6 +18,50 @@ interface Member {
   _creationTime: number;
 }
 
+interface DocItem {
+  _id: string;
+  title: string;
+  type: string;
+  clientName: string;
+  data: any;
+  updatedAt: number;
+}
+
+interface ActivityLog {
+  _id: string;
+  userId: string;
+  userName: string;
+  documentId: string;
+  documentTitle: string;
+  action: string;
+  timestamp: number;
+}
+
+const ACTION_CONFIG: Record<string, { label: string; color: string; bg: string; icon: React.ElementType }> = {
+  viewed:     { label: 'Viewed',     color: '#6b7280', bg: '#f3f4f6', icon: Eye },
+  edited:     { label: 'Edited',     color: '#2563eb', bg: '#eff6ff', icon: Edit3 },
+  ai_edited:  { label: 'AI Edited',  color: '#7c3aed', bg: '#f5f3ff', icon: Sparkles },
+  shared:     { label: 'Shared',     color: '#059669', bg: '#ecfdf5', icon: Share2 },
+  deleted:    { label: 'Deleted',    color: '#dc2626', bg: '#fef2f2', icon: Trash2 },
+  duplicated: { label: 'Duplicated', color: '#d97706', bg: '#fffbeb', icon: Copy },
+};
+
+const TYPE_COLORS: Record<string, string> = {
+  quotation: '#8B5CF6', invoice: '#059669', proforma_invoice: '#0284C7',
+  proposal: '#D97706', sow: '#DB2777', agreement: '#7C3AED',
+  nda: '#DC2626', receipt: '#16A34A', timeline: '#2563EB',
+};
+
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
 const Team = () => {
   const { user } = useAuth();
   const [members, setMembers] = useState<Member[]>([]);
@@ -22,12 +70,26 @@ const Team = () => {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
 
+  // Document permissions state
+  const [documents, setDocuments] = useState<DocItem[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [updatingPerm, setUpdatingPerm] = useState<string | null>(null);
+
+  // Activity log state
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+  const [actionFilter, setActionFilter] = useState<string>('all');
+
   const isOwner = user?.role === 'admin';
 
   useEffect(() => {
     fetchMembers();
     fetchCompany();
-  }, []);
+    if (isOwner) {
+      fetchDocuments();
+      fetchActivityLogs();
+    }
+  }, [isOwner]);
 
   const fetchMembers = async () => {
     try {
@@ -44,8 +106,41 @@ const Team = () => {
     try {
       const res = await api.get('/company');
       if (res.data?.inviteCode) setInviteCode(res.data.inviteCode);
+    } catch {}
+  };
+
+  const fetchDocuments = async () => {
+    setLoadingDocs(true);
+    try {
+      const res = await api.get('/documents');
+      setDocuments(res.data || []);
     } catch {
-      // silently ignore
+      toast.error('Failed to load documents');
+    } finally {
+      setLoadingDocs(false);
+    }
+  };
+
+  const fetchActivityLogs = async () => {
+    setLoadingLogs(true);
+    try {
+      const res = await api.get('/company/activity-logs');
+      setActivityLogs(res.data || []);
+    } catch {} finally {
+      setLoadingLogs(false);
+    }
+  };
+
+  const handlePermissionToggle = async (doc: DocItem, newPerm: 'all' | 'owner_only') => {
+    setUpdatingPerm(doc._id);
+    try {
+      const res = await api.put(`/documents/${doc._id}/permission`, { permission: newPerm });
+      setDocuments(prev => prev.map(d => d._id === doc._id ? { ...d, data: res.data.data } : d));
+      toast.success(newPerm === 'owner_only' ? `"${doc.title}" locked to owner only` : `"${doc.title}" opened to all members`);
+    } catch {
+      toast.error('Failed to update permission');
+    } finally {
+      setUpdatingPerm(null);
     }
   };
 
@@ -81,6 +176,10 @@ const Team = () => {
     }
   };
 
+  const filteredLogs = actionFilter === 'all'
+    ? activityLogs
+    : activityLogs.filter(l => l.action === actionFilter);
+
   if (loading) return (
     <div className="h-full flex items-center justify-center">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: BRAND }} />
@@ -89,13 +188,12 @@ const Team = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Team</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {members.length} member{members.length !== 1 ? 's' : ''} in your workspace
-          </p>
-        </div>
+      {/* Header */}
+      <div>
+        <h1 className="text-xl font-bold text-gray-900">Team</h1>
+        <p className="text-xs text-gray-400 mt-0.5">
+          {members.length} member{members.length !== 1 ? 's' : ''} in your workspace
+        </p>
       </div>
 
       {/* Invite Card — owner only */}
@@ -110,7 +208,6 @@ const Team = () => {
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
             Share this invite link with your employees. Anyone with the link can join your workspace as a member.
           </p>
-
           {inviteCode ? (
             <div className="space-y-3">
               <div className="flex items-center gap-2">
@@ -177,17 +274,12 @@ const Team = () => {
                 <tr key={m._id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-5 py-3">
                     <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0"
-                        style={{ backgroundColor: BRAND }}
-                      >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ backgroundColor: BRAND }}>
                         {(m.name || '?')[0].toUpperCase()}
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900 text-sm">{m.name}</p>
-                        {m._id === user?._id && (
-                          <span className="text-xs text-gray-400">(You)</span>
-                        )}
+                        {m._id === user?._id && <span className="text-xs text-gray-400">(You)</span>}
                       </div>
                     </div>
                   </td>
@@ -195,9 +287,7 @@ const Team = () => {
                   <td className="px-5 py-3">
                     <span
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold"
-                      style={m.role === 'admin'
-                        ? { backgroundColor: BRAND, color: '#fff' }
-                        : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                      style={m.role === 'admin' ? { backgroundColor: BRAND, color: '#fff' } : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
                     >
                       {m.role === 'admin' ? <Shield size={10} /> : <User size={10} />}
                       {m.role === 'admin' ? 'Owner' : 'Member'}
@@ -226,13 +316,209 @@ const Team = () => {
         )}
       </div>
 
-      {/* Permission note */}
-      <div className="bg-blue-50 border border-blue-100 rounded-xl px-5 py-4">
-        <h4 className="text-sm font-bold text-blue-800 mb-1">Document Edit Permissions</h4>
-        <p className="text-xs text-blue-700 leading-relaxed">
-          All members can view documents. In each document, the owner can restrict editing to "Owner Only" using the Edit Access control in the document page.
-        </p>
-      </div>
+      {/* Document Edit Permissions — owner control panel */}
+      {isOwner && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${BRAND}15`, color: BRAND }}>
+                <Shield size={15} />
+              </div>
+              <div>
+                <h3 className="font-bold text-gray-900 text-sm">Document Edit Permissions</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Control who can edit each document</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 text-xs text-gray-400">
+              <span className="flex items-center gap-1">
+                <Unlock size={11} className="text-green-500" /> All members
+              </span>
+              <span className="flex items-center gap-1">
+                <Lock size={11} className="text-amber-500" /> Owner only
+              </span>
+            </div>
+          </div>
+
+          {loadingDocs ? (
+            <div className="py-10 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: BRAND }} />
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="py-10 text-center">
+              <FileText size={28} className="text-gray-200 mx-auto mb-2" />
+              <p className="text-gray-400 text-sm">No documents yet.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <tr>
+                  <th className="px-5 py-3 text-left">Document</th>
+                  <th className="px-5 py-3 text-left">Type</th>
+                  <th className="px-5 py-3 text-left">Client</th>
+                  <th className="px-5 py-3 text-left">Current Permission</th>
+                  <th className="px-5 py-3 text-right">Change</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {documents.map(doc => {
+                  const perm: 'all' | 'owner_only' = doc.data?.editPermission || 'all';
+                  const isUpdating = updatingPerm === doc._id;
+                  const typeColor = TYPE_COLORS[doc.type] || BRAND;
+                  return (
+                    <tr key={doc._id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <p className="font-semibold text-gray-900 text-xs max-w-[180px] truncate">{doc.title}</p>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold capitalize"
+                          style={{ backgroundColor: `${typeColor}15`, color: typeColor }}
+                        >
+                          {(doc.type || '').replace('_', ' ')}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3 text-gray-400 text-xs">{doc.clientName || '—'}</td>
+                      <td className="px-5 py-3">
+                        {perm === 'owner_only' ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700">
+                            <Lock size={11} /> Owner Only
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-green-50 text-green-700">
+                            <Unlock size={11} /> All Members
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {isUpdating ? (
+                            <Loader2 size={14} className="animate-spin text-gray-400" />
+                          ) : perm === 'owner_only' ? (
+                            <button
+                              onClick={() => handlePermissionToggle(doc, 'all')}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-green-200 text-green-700 hover:bg-green-50 transition-colors"
+                            >
+                              <Unlock size={11} /> Allow All
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handlePermissionToggle(doc, 'owner_only')}
+                              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border border-amber-200 text-amber-700 hover:bg-amber-50 transition-colors"
+                            >
+                              <Lock size={11} /> Lock
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {/* Permission info for non-owners */}
+      {!isOwner && (
+        <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Shield size={14} className="text-gray-400" />
+            <h4 className="text-sm font-bold text-gray-600">Document Permissions</h4>
+          </div>
+          <p className="text-xs text-gray-400 leading-relaxed">
+            All members can view documents. The workspace owner controls which documents are editable by all members vs owner only.
+          </p>
+        </div>
+      )}
+
+      {/* Activity Log — owner only */}
+      {isOwner && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg" style={{ backgroundColor: `${BRAND}15`, color: BRAND }}>
+                <Activity size={15} />
+              </div>
+              <h3 className="font-bold text-gray-900 text-sm">Activity Log</h3>
+              <span className="text-xs text-gray-400 font-medium">Last 100 actions</span>
+            </div>
+            <div className="flex items-center gap-1 flex-wrap">
+              {(['all', 'viewed', 'edited', 'ai_edited', 'shared', 'deleted', 'duplicated'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setActionFilter(f)}
+                  className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all"
+                  style={actionFilter === f
+                    ? { backgroundColor: BRAND, color: '#fff' }
+                    : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                >
+                  {f === 'all' ? 'All' : f === 'ai_edited' ? 'AI Edit' : f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {loadingLogs ? (
+            <div className="py-10 flex items-center justify-center">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2" style={{ borderColor: BRAND }} />
+            </div>
+          ) : filteredLogs.length === 0 ? (
+            <div className="py-12 text-center">
+              <Activity size={28} className="text-gray-200 mx-auto mb-2" />
+              <p className="text-gray-400 text-sm">No activity recorded yet.</p>
+              <p className="text-gray-300 text-xs mt-1">Actions on documents will appear here.</p>
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                <tr>
+                  <th className="px-5 py-3 text-left">Member</th>
+                  <th className="px-5 py-3 text-left">Action</th>
+                  <th className="px-5 py-3 text-left">Document</th>
+                  <th className="px-5 py-3 text-left">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50">
+                {filteredLogs.map(log => {
+                  const cfg = ACTION_CONFIG[log.action] || { label: log.action, color: '#6b7280', bg: '#f3f4f6', icon: FileText };
+                  const Icon = cfg.icon;
+                  return (
+                    <tr key={log._id} className="hover:bg-gray-50/50 transition-colors">
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-md flex items-center justify-center text-white text-xs font-bold shrink-0" style={{ backgroundColor: BRAND }}>
+                            {(log.userName || '?')[0].toUpperCase()}
+                          </div>
+                          <span className="font-semibold text-gray-900 text-xs">{log.userName}</span>
+                        </div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span
+                          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold"
+                          style={{ backgroundColor: cfg.bg, color: cfg.color }}
+                        >
+                          <Icon size={11} />
+                          {cfg.label}
+                        </span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <span className="text-xs text-gray-600 font-medium max-w-[180px] truncate block">{log.documentTitle}</span>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1 text-gray-400 text-xs">
+                          <Clock size={11} />
+                          {timeAgo(log.timestamp)}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -58,4 +58,14 @@ export default defineSchema({
     category: v.optional(v.string()),
     createdAt: v.number(),
   }).index("by_company", ["companyId"]),
+
+  activityLogs: defineTable({
+    companyId: v.id("companies"),
+    userId: v.string(),
+    userName: v.string(),
+    documentId: v.string(),
+    documentTitle: v.string(),
+    action: v.string(),
+    timestamp: v.number(),
+  }).index("by_company", ["companyId"]),
 });

@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { FileText, Search, Edit3, Copy, Trash2, Plus, Loader2 } from 'lucide-react';
+import { FileText, Search, Edit3, Copy, Trash2, Plus, Loader2, Share2, Check } from 'lucide-react';
 
 const BRAND = '#714B67';
 
@@ -24,6 +24,8 @@ const Documents = () => {
   const [search, setSearch] = useState('');
   const [duplicating, setDuplicating] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [sharing, setSharing] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,6 +54,22 @@ const Documents = () => {
       toast.error('Failed to duplicate document');
     } finally {
       setDuplicating(null);
+    }
+  };
+
+  const handleShare = async (doc: any) => {
+    setSharing(doc._id);
+    try {
+      const res = await api.post(`/documents/${doc._id}/share`);
+      const shareUrl = `${window.location.origin}/shared/${res.data.shareToken}`;
+      await navigator.clipboard.writeText(shareUrl);
+      setShareCopied(doc._id);
+      setTimeout(() => setShareCopied(null), 3000);
+      toast.success('Share link copied to clipboard!');
+    } catch {
+      toast.error('Failed to create share link');
+    } finally {
+      setSharing(null);
     }
   };
 
@@ -173,6 +191,20 @@ const Documents = () => {
                         >
                           <Edit3 size={14} />
                         </Link>
+
+                        {/* Share */}
+                        <button
+                          onClick={() => handleShare(doc)}
+                          disabled={sharing === doc._id || isDeleting}
+                          className="p-1.5 rounded-lg hover:bg-green-50 text-gray-400 hover:text-green-600 transition-colors disabled:opacity-40"
+                          title="Copy share link"
+                        >
+                          {sharing === doc._id
+                            ? <Loader2 size={14} className="animate-spin" />
+                            : shareCopied === doc._id
+                            ? <Check size={14} className="text-green-500" />
+                            : <Share2 size={14} />}
+                        </button>
 
                         {/* Duplicate */}
                         <button

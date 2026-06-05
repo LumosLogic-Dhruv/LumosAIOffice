@@ -81,6 +81,13 @@ async def remove_custom_field(
     })
 
 
+@router.get("/activity-logs")
+async def get_activity_logs(current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the company owner can view activity logs")
+    return await convex_client.query("activityLogs:listByCompany", {"companyId": current_user["companyId"]})
+
+
 @router.get("/members")
 async def list_members(current_user: dict = Depends(get_current_user)):
     users = await convex_client.query("users:listByCompany", {"companyId": current_user["companyId"]})
