@@ -22,6 +22,7 @@ export default defineSchema({
     defaultTerms: v.optional(v.string()),
     customFields: v.array(v.any()),
     inviteCode: v.optional(v.string()),
+    colorTheme: v.optional(v.any()),
   }),
 
   documents: defineTable({
@@ -35,6 +36,7 @@ export default defineSchema({
     versionHistory: v.array(v.any()),
     updatedAt: v.number(),
     shareToken: v.optional(v.string()),
+    eSignature: v.optional(v.any()),
   }).index("by_company", ["companyId"])
     .index("by_share_token", ["shareToken"]),
 

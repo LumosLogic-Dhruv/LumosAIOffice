@@ -16,6 +16,13 @@ const TYPE_COLORS: Record<string, string> = {
   nda: '#DC2626',
   receipt: '#16A34A',
   timeline: '#2563EB',
+  form_16: '#0F766E',
+  gst_invoice: '#0369A1',
+  salary_slip: '#15803D',
+  offer_letter: '#B45309',
+  policy: '#6D28D9',
+  experience_letter: '#9333EA',
+  service_agreement: '#BE123C',
 };
 
 const Documents = () => {

@@ -27,6 +27,13 @@ DEFAULT_TERMS: dict[str, str] = {
     "agreement": "This agreement is subject to the terms of the signed master contract.",
     "nda": "All information disclosed remains strictly confidential for 3 years.",
     "timeline": "Timelines are estimates. Delays in feedback may shift the final delivery date.",
+    "form_16": "This Form 16 is issued under Section 203 of the Income Tax Act, 1961. Please verify all details with your Chartered Accountant before filing.",
+    "gst_invoice": "E&OE. Goods once sold will not be taken back or exchanged. Subject to local jurisdiction. This is a computer-generated invoice.",
+    "salary_slip": "This is a computer-generated salary slip and does not require a physical signature. For any discrepancies, please contact the HR department.",
+    "offer_letter": "This offer is conditional upon successful completion of background verification and document submission. This offer is valid for 7 days from the date of issue.",
+    "policy": "This policy supersedes all previous versions on the same subject. Non-compliance may result in disciplinary action as per company HR policies.",
+    "experience_letter": "This letter is issued on request of the employee for the purpose of future employment only and carries no other obligation.",
+    "service_agreement": "This agreement shall be governed by the laws of India. Any disputes shall be subject to the exclusive jurisdiction of courts in the city mentioned herein.",
 }
 
 
@@ -314,3 +321,39 @@ async def get_shared_document(token: str):
         raise HTTPException(status_code=404, detail="Document not found or share link revoked")
     company = await convex_client.query("companies:getById", {"id": doc["companyId"]})
     return {"document": doc, "company": company}
+
+
+class ESignRequest(BaseModel):
+    signerName: str
+    signerContact: str
+    signatureImage: str
+
+
+@router.post("/shared/{token}/sign")
+async def sign_document(token: str, req: ESignRequest):
+    doc = await convex_client.query("documents:getByShareToken", {"shareToken": token})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found or share link expired")
+
+    if not (doc.get("data") or {}).get("eSignRequest"):
+        raise HTTPException(status_code=400, detail="E-signature was not requested for this document")
+
+    if doc.get("eSignature"):
+        raise HTTPException(status_code=400, detail="Document has already been signed")
+
+    e_signature = {
+        "signerName": req.signerName,
+        "signerContact": req.signerContact,
+        "signatureImage": req.signatureImage,
+        "signedAt": int(time.time() * 1000),
+    }
+
+    updated = await convex_client.mutation("documents:update", {
+        "id": doc["_id"],
+        "eSignature": e_signature,
+    })
+
+    company = await convex_client.query("companies:getById", {"id": doc["companyId"]})
+    await _sync_pdf(company, updated)
+
+    return {"success": True, "signedAt": e_signature["signedAt"]}

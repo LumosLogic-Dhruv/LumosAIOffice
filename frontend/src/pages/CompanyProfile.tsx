@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Building2, Mail, Phone, MapPin, Globe, Fingerprint, Upload, Loader2, Save } from 'lucide-react';
+import { Building2, Mail, Phone, MapPin, Globe, Fingerprint, Upload, Loader2, Save, Palette } from 'lucide-react';
 
 const BRAND = '#714B67';
+
+const COLOR_SLOTS = [
+  { key: 'primary1', label: 'Primary Color 1', hint: 'Main brand color — used in headers and key elements' },
+  { key: 'primary2', label: 'Primary Color 2', hint: 'Secondary brand accent color' },
+  { key: 'secondary', label: 'Extra Color', hint: 'Supporting color for highlights or backgrounds' },
+];
+
+const DEFAULT_COLORS: Record<string, string> = {
+  primary1: '#714B67',
+  primary2: '#9B6B8F',
+  secondary: '#E8D5E0',
+};
 
 const CompanyProfile = () => {
   const [profile, setProfile] = useState<any>(null);
@@ -53,6 +65,16 @@ const CompanyProfile = () => {
     } finally {
       setUploading(false);
     }
+  };
+
+  const getColor = (key: string): string =>
+    profile?.colorTheme?.[key] || DEFAULT_COLORS[key];
+
+  const setColor = (key: string, value: string) => {
+    setProfile({
+      ...profile,
+      colorTheme: { ...(profile?.colorTheme || DEFAULT_COLORS), [key]: value },
+    });
   };
 
   if (loading) return (
@@ -132,6 +154,61 @@ const CompanyProfile = () => {
                 onChange={(e) => setProfile({ ...profile, address: e.target.value })}
               />
             </div>
+          </div>
+
+          {/* Brand Colors */}
+          <div className="pt-4 border-t border-gray-100">
+            <div className="flex items-center gap-2 mb-4">
+              <Palette size={14} className="text-gray-400" />
+              <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Brand Color Theme</span>
+            </div>
+            <p className="text-xs text-gray-400 mb-4">
+              These colors will be applied to all your generated documents — headers, section borders, and tables.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {COLOR_SLOTS.map(({ key, label, hint }) => (
+                <div key={key} className="space-y-2">
+                  <label className="text-xs font-semibold text-gray-500">{label}</label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <input
+                        type="color"
+                        value={getColor(key)}
+                        onChange={e => setColor(key, e.target.value)}
+                        className="w-10 h-10 rounded-lg cursor-pointer border-2 border-gray-200 p-0.5 bg-white"
+                        title={label}
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      value={getColor(key)}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) setColor(key, val);
+                      }}
+                      maxLength={7}
+                      className="flex-1 px-3 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 font-mono text-gray-700 focus:outline-none"
+                      onFocus={e => e.target.style.borderColor = BRAND}
+                      onBlur={e => e.target.style.borderColor = ''}
+                      placeholder="#714B67"
+                    />
+                  </div>
+                  <p className="text-xs text-gray-400 leading-tight">{hint}</p>
+                </div>
+              ))}
+            </div>
+            {/* Live preview strip */}
+            <div className="mt-4 rounded-lg overflow-hidden border border-gray-100 flex h-8">
+              {COLOR_SLOTS.map(({ key }) => (
+                <div
+                  key={key}
+                  className="flex-1 transition-colors duration-200"
+                  style={{ backgroundColor: getColor(key) }}
+                  title={`${COLOR_SLOTS.find(s => s.key === key)?.label}: ${getColor(key)}`}
+                />
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">Preview of your selected colors</p>
           </div>
 
           <div className="pt-4 border-t border-gray-100 flex justify-end">

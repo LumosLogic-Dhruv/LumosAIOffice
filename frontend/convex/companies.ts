@@ -37,6 +37,7 @@ export const update = mutation({
     defaultTerms: v.optional(v.string()),
     customFields: v.optional(v.array(v.any())),
     inviteCode: v.optional(v.string()),
+    colorTheme: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
     const { id, ...fields } = args;
