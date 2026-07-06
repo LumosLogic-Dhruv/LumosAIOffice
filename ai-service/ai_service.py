@@ -277,8 +277,22 @@ STRICT RULES:
 }}"""
 
 
-async def generate_document_data(doc_type: str, raw_text: str, company_name: str, custom_fields: list):
+_TONE_INSTRUCTIONS = {
+    "professional": "",
+    "friendly": "Use a warm, friendly, and approachable tone throughout. Write conversationally while remaining professional.",
+    "formal": "Use highly formal, authoritative language. Avoid contractions. Use passive voice where appropriate.",
+    "concise": "Be extremely concise. Use short sentences. Cut all filler words. Every sentence must add value.",
+}
+
+
+async def generate_document_data(
+    doc_type: str, raw_text: str, company_name: str, custom_fields: list, tone: str = "professional"
+):
+    tone_instruction = _TONE_INSTRUCTIONS.get(tone, "")
     body = f'User Input: "{raw_text}"'
+    if tone_instruction:
+        body = f"Tone requirement: {tone_instruction}\n\n{body}"
+
     if doc_type == "form_16":
         prompt = _build_form16_prompt(company_name, body)
     elif doc_type == "gst_invoice":

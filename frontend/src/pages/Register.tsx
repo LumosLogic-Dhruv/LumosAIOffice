@@ -32,6 +32,7 @@ const Register = () => {
   const inviteCode = searchParams.get('invite') || '';
   const isInvite = !!inviteCode;
   const [loading, setLoading] = useState(false);
+  const [inviteError, setInviteError] = useState('');
   const navigate = useNavigate();
   const { login } = useAuth();
 
@@ -64,7 +65,11 @@ const Register = () => {
       toast.success(isInvite ? 'Joined team successfully!' : 'Account created successfully!');
       navigate('/dashboard');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Registration failed');
+      const detail = error.response?.data?.detail || 'Registration failed';
+      toast.error(detail);
+      if (isInvite && (detail.toLowerCase().includes('invite') || detail.toLowerCase().includes('invalid'))) {
+        setInviteError(detail);
+      }
     } finally {
       setLoading(false);
     }
@@ -198,6 +203,18 @@ const Register = () => {
                   </>
                 )}
               </button>
+              {isInvite && inviteError && (
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-red-500 mb-1">{inviteError}</p>
+                  <Link
+                    to="/register"
+                    className="text-xs font-semibold hover:underline"
+                    style={{ color: '#714B67' }}
+                  >
+                    Register as a new company instead →
+                  </Link>
+                </div>
+              )}
             </form>
 
             <div className="mt-8 pt-6 border-t border-gray-100 text-center">

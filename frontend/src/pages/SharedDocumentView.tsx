@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Download, Loader2, AlertCircle, X, FileText, PenLine, Trash2, CheckCircle2 } from 'lucide-react';
+import { Download, Loader2, AlertCircle, X, FileText, PenLine, Trash2, CheckCircle2, Mail, ArrowRight } from 'lucide-react';
 
 const BRAND = '#714B67';
 
@@ -14,13 +14,17 @@ const SharedDocumentView = () => {
   const [error, setError] = useState('');
   const [showPdfModal, setShowPdfModal] = useState(false);
 
-  // E-signature state
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const isDrawing = useRef(false);
   const lastPos = useRef<{ x: number; y: number } | null>(null);
   const [hasSigned, setHasSigned] = useState(false);
   const [signerName, setSignerName] = useState('');
   const [signerContact, setSignerContact] = useState('');
+  const [signerEmail, setSignerEmail] = useState('');
+  const [otpCode, setOtpCode] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [requestingOtp, setRequestingOtp] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
   const [signing, setSigning] = useState(false);
 
   const brandColor = company?.colorTheme?.primary1 || BRAND;
@@ -39,7 +43,6 @@ const SharedDocumentView = () => {
     })();
   }, [token]);
 
-  // ── Canvas drawing helpers ──────────────────────────────────────────────
   const getCanvasPos = (e: MouseEvent | TouchEvent, canvas: HTMLCanvasElement) => {
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
@@ -96,18 +99,39 @@ const SharedDocumentView = () => {
     setHasSigned(false);
   };
 
+  const handleRequestOtp = async () => {
+    if (!signerEmail.trim()) return toast.error('Please enter your email address');
+    setRequestingOtp(true);
+    try {
+      await api.post(`/documents/shared/${token}/request-otp`, { email: signerEmail.trim() });
+      setOtpSent(true);
+      toast.success('Code sent to your email');
+    } catch (err: any) {
+      toast.error(err?.response?.data?.detail || 'Failed to send OTP');
+    } finally {
+      setRequestingOtp(false);
+    }
+  };
+
+  const handleVerifyAndContinue = () => {
+    if (!signerName.trim()) return toast.error('Please enter your full name');
+    if (!signerEmail.trim()) return toast.error('Please enter your email address');
+    if (otpCode.trim().length < 6) return toast.error('Please enter the 6-digit verification code');
+    setStep(2);
+  };
+
   const handleSign = async () => {
     const canvas = canvasRef.current;
     if (!hasSigned || !canvas) return toast.error('Please draw your signature first');
-    if (!signerName.trim()) return toast.error('Please enter your full name');
-    if (!signerContact.trim()) return toast.error('Please enter your email or phone');
     setSigning(true);
     try {
       const signatureImage = canvas.toDataURL('image/png');
       await api.post(`/documents/shared/${token}/sign`, {
         signerName: signerName.trim(),
         signerContact: signerContact.trim(),
+        signerEmail: signerEmail.trim(),
         signatureImage,
+        otpCode: otpCode.trim(),
       });
       toast.success('Document signed successfully!');
       const res = await api.get(`/documents/shared/${token}`);
@@ -142,7 +166,6 @@ const SharedDocumentView = () => {
   return (
     <div className="min-h-screen bg-gray-100 py-8 px-4">
       <div className="max-w-4xl mx-auto">
-        {/* Top bar */}
         <div className="flex items-center justify-between mb-6">
           <Link to="/" className="text-sm text-gray-500 hover:text-gray-700 font-semibold">
             ← DocuFlow AI
@@ -177,9 +200,7 @@ const SharedDocumentView = () => {
           </div>
         </div>
 
-        {/* Document */}
         <div className="bg-white shadow-2xl rounded-sm overflow-hidden">
-          {/* Header band */}
           <div className="flex justify-between items-start p-10" style={{ backgroundColor: brandColor }}>
             <div>
               {company?.logoUrl ? (
@@ -199,9 +220,7 @@ const SharedDocumentView = () => {
             </div>
           </div>
 
-          {/* Body */}
           <div className="px-10 py-8 space-y-10">
-            {/* Title + client row */}
             <div className="flex justify-between items-end">
               <div>
                 <h1 className="text-3xl font-black text-gray-900 mb-2">{doc.title}</h1>
@@ -216,7 +235,6 @@ const SharedDocumentView = () => {
               </div>
             </div>
 
-            {/* Sections */}
             {doc.data?.sections?.map((s: any, i: number) => (
               <div key={i} className="space-y-3">
                 <h3 className="text-xl font-black text-gray-900 border-l-4 pl-4" style={{ borderColor: brandColor }}>
@@ -226,7 +244,6 @@ const SharedDocumentView = () => {
               </div>
             ))}
 
-            {/* Tables */}
             {doc.data?.tables?.map((table: any, i: number) => (
               <div key={i} className="space-y-3">
                 <h3 className="text-xl font-black text-gray-900">{table.title}</h3>
@@ -253,7 +270,6 @@ const SharedDocumentView = () => {
               </div>
             ))}
 
-            {/* Summary */}
             {doc.data?.summary && Object.keys(doc.data.summary).length > 0 && (
               <div className="flex justify-end">
                 <div className="w-72 space-y-3 p-6 rounded-xl bg-gray-50 border border-gray-100">
@@ -267,7 +283,6 @@ const SharedDocumentView = () => {
               </div>
             )}
 
-            {/* Signed signature display (inside document body) */}
             {alreadySigned && (
               <div className="rounded-xl border-2 border-green-100 bg-green-50/50 p-5 space-y-3">
                 <div className="flex items-center gap-2">
@@ -288,7 +303,6 @@ const SharedDocumentView = () => {
             )}
           </div>
 
-          {/* Footer */}
           <div className="mt-8 pt-6 border-t border-gray-100 flex justify-between items-end px-10 pb-10">
             <div className="space-y-3">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Authorized Signatory</p>
@@ -306,7 +320,6 @@ const SharedDocumentView = () => {
           </div>
         </div>
 
-        {/* ── E-Signature Panel ──────────────────────────────────────────── */}
         {eSignRequested && (
           <div className="mt-6 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             {alreadySigned ? (
@@ -326,87 +339,170 @@ const SharedDocumentView = () => {
                   </div>
                   <div>
                     <h3 className="text-base font-black text-gray-900">E-Sign This Document</h3>
-                    <p className="text-xs text-gray-400 mt-0.5">Draw your signature and provide your details below</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {step === 1 ? 'Step 1 of 2 — Verify your identity' : 'Step 2 of 2 — Draw your signature'}
+                    </p>
                   </div>
                 </div>
 
-                {/* Canvas */}
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Your Signature</label>
-                    {hasSigned && (
-                      <button
-                        onClick={clearCanvas}
-                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 font-semibold transition-colors"
-                      >
-                        <Trash2 size={11} /> Clear
-                      </button>
-                    )}
+                <div className="flex items-center gap-2 mb-2">
+                  <div
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-xs font-black"
+                    style={{ backgroundColor: step >= 1 ? brandColor : '#e5e7eb', color: step >= 1 ? '#fff' : '#9ca3af' }}
+                  >
+                    1
                   </div>
-                  <div className="relative rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 overflow-hidden" style={{ height: 140 }}>
-                    {!hasSigned && (
-                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                        <p className="text-gray-300 text-sm font-semibold select-none">Sign here</p>
+                  <div className="flex-1 h-0.5 rounded" style={{ backgroundColor: step === 2 ? brandColor : '#e5e7eb' }} />
+                  <div
+                    className="flex items-center justify-center w-6 h-6 rounded-full text-xs font-black"
+                    style={{ backgroundColor: step === 2 ? brandColor : '#e5e7eb', color: step === 2 ? '#fff' : '#9ca3af' }}
+                  >
+                    2
+                  </div>
+                </div>
+
+                {step === 1 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Full Name</label>
+                        <input
+                          type="text"
+                          placeholder="John Doe"
+                          value={signerName}
+                          onChange={e => setSignerName(e.target.value)}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
+                          onFocus={e => e.target.style.borderColor = brandColor}
+                          onBlur={e => e.target.style.borderColor = ''}
+                        />
                       </div>
-                    )}
-                    <canvas
-                      ref={canvasRef}
-                      width={800}
-                      height={280}
-                      className="w-full h-full cursor-crosshair touch-none"
-                      onMouseDown={startDraw}
-                      onMouseMove={draw}
-                      onMouseUp={stopDraw}
-                      onMouseLeave={stopDraw}
-                      onTouchStart={startDraw}
-                      onTouchMove={draw}
-                      onTouchEnd={stopDraw}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-400">Use your mouse or touch to draw your signature</p>
-                </div>
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone (optional)</label>
+                        <input
+                          type="text"
+                          placeholder="+91 9876543210"
+                          value={signerContact}
+                          onChange={e => setSignerContact(e.target.value)}
+                          className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
+                          onFocus={e => e.target.style.borderColor = brandColor}
+                          onBlur={e => e.target.style.borderColor = ''}
+                        />
+                      </div>
+                    </div>
 
-                {/* Details */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Full Name</label>
-                    <input
-                      type="text"
-                      placeholder="John Doe"
-                      value={signerName}
-                      onChange={e => setSignerName(e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
-                      onFocus={e => e.target.style.borderColor = brandColor}
-                      onBlur={e => e.target.style.borderColor = ''}
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email / Phone</label>
-                    <input
-                      type="text"
-                      placeholder="john@example.com or +91 9876543210"
-                      value={signerContact}
-                      onChange={e => setSignerContact(e.target.value)}
-                      className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
-                      onFocus={e => e.target.style.borderColor = brandColor}
-                      onBlur={e => e.target.style.borderColor = ''}
-                    />
-                  </div>
-                </div>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email Address</label>
+                      <div className="flex gap-2">
+                        <input
+                          type="email"
+                          placeholder="john@example.com"
+                          value={signerEmail}
+                          onChange={e => setSignerEmail(e.target.value)}
+                          className="flex-1 px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none"
+                          onFocus={e => e.target.style.borderColor = brandColor}
+                          onBlur={e => e.target.style.borderColor = ''}
+                        />
+                        <button
+                          onClick={handleRequestOtp}
+                          disabled={requestingOtp || !signerEmail.trim()}
+                          className="flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50 whitespace-nowrap"
+                          style={{ backgroundColor: brandColor }}
+                        >
+                          {requestingOtp ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                          Send OTP
+                        </button>
+                      </div>
+                      {otpSent && (
+                        <p className="text-xs text-green-600 font-semibold flex items-center gap-1">
+                          <CheckCircle2 size={11} /> Code sent to your email
+                        </p>
+                      )}
+                    </div>
 
-                <button
-                  onClick={handleSign}
-                  disabled={signing}
-                  style={{ backgroundColor: brandColor }}
-                  className="w-full text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2.5 hover:opacity-90 transition-all disabled:opacity-50 shadow"
-                >
-                  {signing ? <Loader2 className="animate-spin" size={16} /> : <PenLine size={16} />}
-                  {signing ? 'Signing...' : 'Submit E-Signature'}
-                </button>
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Verification Code</label>
+                      <input
+                        type="text"
+                        placeholder="6-digit code"
+                        value={otpCode}
+                        onChange={e => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                        maxLength={6}
+                        className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg bg-gray-50 text-gray-700 focus:outline-none tracking-widest font-mono"
+                        onFocus={e => e.target.style.borderColor = brandColor}
+                        onBlur={e => e.target.style.borderColor = ''}
+                      />
+                    </div>
 
-                <p className="text-xs text-gray-400 text-center">
-                  By signing, you agree that this is a legally binding electronic signature.
-                </p>
+                    <button
+                      onClick={handleVerifyAndContinue}
+                      style={{ backgroundColor: brandColor }}
+                      className="w-full text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2.5 hover:opacity-90 transition-all shadow"
+                    >
+                      <ArrowRight size={16} />
+                      Verify & Continue
+                    </button>
+                  </div>
+                )}
+
+                {step === 2 && (
+                  <div className="space-y-5">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Your Signature</label>
+                        {hasSigned && (
+                          <button
+                            onClick={clearCanvas}
+                            className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 font-semibold transition-colors"
+                          >
+                            <Trash2 size={11} /> Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 overflow-hidden" style={{ height: 140 }}>
+                        {!hasSigned && (
+                          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                            <p className="text-gray-300 text-sm font-semibold select-none">Sign here</p>
+                          </div>
+                        )}
+                        <canvas
+                          ref={canvasRef}
+                          width={800}
+                          height={280}
+                          className="w-full h-full cursor-crosshair touch-none"
+                          onMouseDown={startDraw}
+                          onMouseMove={draw}
+                          onMouseUp={stopDraw}
+                          onMouseLeave={stopDraw}
+                          onTouchStart={startDraw}
+                          onTouchMove={draw}
+                          onTouchEnd={stopDraw}
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400">Use your mouse or touch to draw your signature</p>
+                    </div>
+
+                    <button
+                      onClick={handleSign}
+                      disabled={signing}
+                      style={{ backgroundColor: brandColor }}
+                      className="w-full text-white py-3 rounded-xl font-black text-sm uppercase tracking-widest flex items-center justify-center gap-2.5 hover:opacity-90 transition-all disabled:opacity-50 shadow"
+                    >
+                      {signing ? <Loader2 className="animate-spin" size={16} /> : <PenLine size={16} />}
+                      {signing ? 'Signing...' : 'Submit Signed Document'}
+                    </button>
+
+                    <button
+                      onClick={() => setStep(1)}
+                      className="w-full py-2 text-xs font-semibold text-gray-400 hover:text-gray-600 transition-colors"
+                    >
+                      ← Back
+                    </button>
+
+                    <p className="text-xs text-gray-400 text-center">
+                      By signing, you agree that this is a legally binding electronic signature.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -418,7 +514,6 @@ const SharedDocumentView = () => {
         </p>
       </div>
 
-      {/* PDF Viewer Modal */}
       {showPdfModal && doc.pdfUrl && (
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
           <div className="flex items-center justify-between px-6 py-3 bg-gray-900 shrink-0">

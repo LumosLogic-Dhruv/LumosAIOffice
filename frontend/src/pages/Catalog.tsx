@@ -4,7 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { BookOpen, Plus, Edit2, Trash2, Search, Tag, X, Save } from 'lucide-react';
+import { BookOpen, Plus, Edit2, Trash2, Search, Tag, X, Save, Download } from 'lucide-react';
+import { SkeletonTable } from '../components/SkeletonLoader';
 
 const BRAND = '#714B67';
 
@@ -38,6 +39,7 @@ const Catalog = () => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<CatalogItem | null>(null);
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CatalogFormData>({
     resolver: zodResolver(catalogSchema),
@@ -104,14 +106,16 @@ const Catalog = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete "${name}"?`)) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/catalog/${id}`);
-      setItems(items.filter(i => i._id !== id));
+      await api.delete(`/catalog/${deleteTarget._id}`);
+      setItems(items.filter(i => i._id !== deleteTarget._id));
       toast.success('Item deleted');
     } catch {
       toast.error('Failed to delete');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -123,9 +127,31 @@ const Catalog = () => {
     )
   );
 
+  const exportCSV = () => {
+    const headers = ['Name', 'Category', 'Unit', 'Rate (₹)', 'Description'];
+    const rows = filtered.map(i => [
+      i.name || '',
+      i.category || '',
+      i.unit || '',
+      String(i.rate ?? 0),
+      i.description || '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`));
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'catalog.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return (
-    <div className="h-full flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: BRAND }} />
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900">Product Catalog</h1>
+      </div>
+      <SkeletonTable rows={6} cols={5} />
     </div>
   );
 
@@ -136,14 +162,23 @@ const Catalog = () => {
           <h1 className="text-xl font-bold text-gray-900">Product Catalog</h1>
           <p className="text-xs text-gray-400 mt-0.5">{items.length} items · {categories.length} categories</p>
         </div>
-        <button
-          onClick={openCreate}
-          style={{ backgroundColor: BRAND }}
-          className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all shadow"
-        >
-          <Plus size={15} />
-          Add Item
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+          >
+            <Download size={15} />
+            Export CSV
+          </button>
+          <button
+            onClick={openCreate}
+            style={{ backgroundColor: BRAND }}
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all shadow"
+          >
+            <Plus size={15} />
+            Add Item
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -202,7 +237,7 @@ const Catalog = () => {
                       <button onClick={() => openEdit(item)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
                         <Edit2 size={13} />
                       </button>
-                      <button onClick={() => handleDelete(item._id, item.name)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                      <button onClick={() => setDeleteTarget(item)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
                         <Trash2 size={13} />
                       </button>
                     </div>
@@ -293,6 +328,37 @@ const Catalog = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-50 mx-auto mb-4">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 text-center mb-1">Delete Item</h3>
+              <p className="text-sm text-gray-500 text-center mb-1">
+                Are you sure you want to delete <span className="font-semibold text-gray-800">{deleteTarget.name}</span>?
+              </p>
+              <p className="text-xs text-gray-400 text-center mb-6">This will permanently remove this item.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-all shadow"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

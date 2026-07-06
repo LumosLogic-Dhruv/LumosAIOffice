@@ -41,8 +41,10 @@ export default defineSchema({
     eSignature: v.optional(v.any()),
     status: v.optional(v.string()),
     expiryDate: v.optional(v.number()),
+    paymentStatus: v.optional(v.string()),
   }).index("by_company", ["companyId"])
-    .index("by_share_token", ["shareToken"]),
+    .index("by_share_token", ["shareToken"])
+    .index("by_company_updated", ["companyId", "updatedAt"]),
 
   clients: defineTable({
     companyId: v.id("companies"),
@@ -74,6 +76,14 @@ export default defineSchema({
     action: v.string(),
     timestamp: v.number(),
   }).index("by_company", ["companyId"]),
+
+  signOtps: defineTable({
+    shareToken: v.string(),
+    email: v.string(),
+    otp: v.string(),
+    expiresAt: v.number(),
+    used: v.boolean(),
+  }).index("by_share_token", ["shareToken"]),
 
   passwordResetTokens: defineTable({
     email: v.string(),

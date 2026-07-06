@@ -4,7 +4,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Users, Plus, Edit2, Trash2, Search, Mail, Phone, X, Save, Building2 } from 'lucide-react';
+import { Users, Plus, Edit2, Trash2, Search, Mail, Phone, X, Save, Building2, Download } from 'lucide-react';
+import { SkeletonCard } from '../components/SkeletonLoader';
 
 const BRAND = '#714B67';
 
@@ -37,6 +38,7 @@ const Clients = () => {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
@@ -103,14 +105,16 @@ const Clients = () => {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Delete client "${name}"?`)) return;
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await api.delete(`/clients/${id}`);
-      setClients(clients.filter(c => c._id !== id));
+      await api.delete(`/clients/${deleteTarget._id}`);
+      setClients(clients.filter(c => c._id !== deleteTarget._id));
       toast.success('Client deleted');
     } catch {
       toast.error('Failed to delete');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -121,9 +125,34 @@ const Clients = () => {
     )
   );
 
+  const exportCSV = () => {
+    const headers = ['Name', 'Email', 'Phone', 'GSTIN', 'Address', 'Notes'];
+    const rows = filtered.map(c => [
+      c.name || '',
+      c.email || '',
+      c.phone || '',
+      c.gstin || '',
+      c.address || '',
+      c.notes || '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`));
+    const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'clients.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   if (loading) return (
-    <div className="h-full flex items-center justify-center">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2" style={{ borderColor: BRAND }} />
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-gray-900">Clients</h1>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
+      </div>
     </div>
   );
 
@@ -134,14 +163,23 @@ const Clients = () => {
           <h1 className="text-xl font-bold text-gray-900">Clients</h1>
           <p className="text-xs text-gray-400 mt-0.5">{clients.length} total clients</p>
         </div>
-        <button
-          onClick={openCreate}
-          style={{ backgroundColor: BRAND }}
-          className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all shadow"
-        >
-          <Plus size={15} />
-          Add Client
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+          >
+            <Download size={15} />
+            Export CSV
+          </button>
+          <button
+            onClick={openCreate}
+            style={{ backgroundColor: BRAND }}
+            className="flex items-center gap-2 px-4 py-2 text-white rounded-lg text-sm font-semibold hover:opacity-90 transition-all shadow"
+          >
+            <Plus size={15} />
+            Add Client
+          </button>
+        </div>
       </div>
 
       <div className="relative">
@@ -182,7 +220,7 @@ const Clients = () => {
                   <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors">
                     <Edit2 size={13} />
                   </button>
-                  <button onClick={() => handleDelete(c._id, c.name)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                  <button onClick={() => setDeleteTarget(c)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
                     <Trash2 size={13} />
                   </button>
                 </div>
@@ -297,6 +335,37 @@ const Clients = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="p-6">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-red-50 mx-auto mb-4">
+                <Trash2 size={22} className="text-red-500" />
+              </div>
+              <h3 className="text-sm font-bold text-gray-900 text-center mb-1">Delete Client</h3>
+              <p className="text-sm text-gray-500 text-center mb-1">
+                Are you sure you want to delete <span className="font-semibold text-gray-800">{deleteTarget.name}</span>?
+              </p>
+              <p className="text-xs text-gray-400 text-center mb-6">This will permanently remove this client.</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteTarget(null)}
+                  className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 py-2 rounded-lg text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-all shadow"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

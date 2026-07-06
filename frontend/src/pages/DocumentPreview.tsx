@@ -34,6 +34,15 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   rejected: { label: 'Rejected', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
 };
 
+type AiTone = 'professional' | 'friendly' | 'formal' | 'concise';
+
+const AI_TONES: { value: AiTone; label: string }[] = [
+  { value: 'professional', label: 'Professional' },
+  { value: 'friendly', label: 'Friendly' },
+  { value: 'formal', label: 'Formal' },
+  { value: 'concise', label: 'Concise' },
+];
+
 const DocumentPreview = () => {
   const { id } = useParams();
   const { user } = useAuth();
@@ -42,6 +51,7 @@ const DocumentPreview = () => {
   const [loading, setLoading] = useState(true);
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [aiInstruction, setAiInstruction] = useState('');
+  const [aiTone, setAiTone] = useState<AiTone>('professional');
   const [editingAI, setEditingAI] = useState(false);
   const [isManualEdit, setIsManualEdit] = useState(false);
   const [isSavingManual, setIsSavingManual] = useState(false);
@@ -49,6 +59,13 @@ const DocumentPreview = () => {
   const [tempDoc, setTempDoc] = useState<any>(null);
   const [sharing, setSharing] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [showSharePopover, setShowSharePopover] = useState(false);
+  const [shareExpiresInDays, setShareExpiresInDays] = useState<number | null>(null);
+  const [shareCustomDate, setShareCustomDate] = useState('');
+  const [shareExpireMode, setShareExpireMode] = useState<'preset' | 'custom'>('preset');
+  const [shareRecipientEmail, setShareRecipientEmail] = useState('');
+  const sharePopoverRef = useRef<HTMLDivElement>(null);
+
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [updatingPerm, setUpdatingPerm] = useState(false);
   const [togglingESign, setTogglingESign] = useState(false);
@@ -104,6 +121,9 @@ const DocumentPreview = () => {
     const handleClickOutside = (e: MouseEvent) => {
       if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
         setShowStatusDropdown(false);
+      }
+      if (sharePopoverRef.current && !sharePopoverRef.current.contains(e.target as Node)) {
+        setShowSharePopover(false);
       }
     };
     window.addEventListener('mousedown', handleClickOutside);
@@ -162,7 +182,7 @@ const DocumentPreview = () => {
     if (!aiInstruction) return toast.error('Please enter instructions');
     setEditingAI(true);
     try {
-      const response = await api.post(`/documents/${id}/edit-ai`, { instruction: aiInstruction });
+      const response = await api.post(`/documents/${id}/edit-ai`, { instruction: aiInstruction, tone: aiTone });
       setDocument(response.data);
       setTempDoc(JSON.parse(JSON.stringify(response.data)));
       setAiInstruction('');
@@ -174,18 +194,44 @@ const DocumentPreview = () => {
     }
   };
 
-  const handleShare = async () => {
+  const handleShareSubmit = async () => {
     setSharing(true);
     try {
-      const res = await api.post(`/documents/${id}/share`);
+      let expiresInDays: number | undefined;
+      if (shareExpireMode === 'custom' && shareCustomDate) {
+        const diff = Math.ceil((new Date(shareCustomDate).getTime() - Date.now()) / 86400000);
+        expiresInDays = diff > 0 ? diff : undefined;
+      } else if (shareExpiresInDays !== null) {
+        expiresInDays = shareExpiresInDays;
+      }
+      const body: any = {};
+      if (expiresInDays !== undefined) body.expiresInDays = expiresInDays;
+      if (shareRecipientEmail) body.recipientEmail = shareRecipientEmail;
+      const res = await api.post(`/documents/${id}/share`, body);
       const token = res.data.shareToken;
       const shareUrl = `${window.location.origin}/shared/${token}`;
       await navigator.clipboard.writeText(shareUrl);
+      setDocument((prev: any) => ({ ...prev, shareToken: token }));
       setShareCopied(true);
+      setShowSharePopover(false);
       setTimeout(() => setShareCopied(false), 3000);
       toast.success('Share link copied to clipboard!');
     } catch {
       toast.error('Failed to create share link');
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleRevokeShare = async () => {
+    setSharing(true);
+    try {
+      await api.delete(`/documents/${id}/share`);
+      setDocument((prev: any) => ({ ...prev, shareToken: null }));
+      setShowSharePopover(false);
+      toast.success('Share link revoked');
+    } catch {
+      toast.error('Failed to revoke share link');
     } finally {
       setSharing(false);
     }
@@ -346,14 +392,97 @@ const DocumentPreview = () => {
             </div>
           )}
 
-          <button
-            onClick={handleShare}
-            disabled={sharing}
-            className="flex items-center space-x-2 px-4 py-3 border-2 border-gray-100 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all text-gray-600"
-          >
-            {shareCopied ? <Check size={16} className="text-green-500" /> : sharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
-            <span>{shareCopied ? 'Copied!' : 'Share'}</span>
-          </button>
+          <div className="relative" ref={sharePopoverRef}>
+            <button
+              onClick={() => setShowSharePopover(v => !v)}
+              disabled={sharing}
+              className="flex items-center space-x-2 px-4 py-3 border-2 border-gray-100 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all text-gray-600"
+            >
+              {shareCopied ? <Check size={16} className="text-green-500" /> : sharing ? <Loader2 size={16} className="animate-spin" /> : <Share2 size={16} />}
+              <span>{shareCopied ? 'Copied!' : 'Share'}</span>
+            </button>
+            {showSharePopover && (
+              <div className="absolute right-0 top-full mt-2 w-68 bg-white rounded-2xl shadow-2xl border border-gray-100 z-30 p-5 space-y-4" style={{ minWidth: '260px' }}>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-black text-gray-700 uppercase tracking-wider">Share Options</p>
+                  <button onClick={() => setShowSharePopover(false)} className="text-gray-400 hover:text-gray-600">
+                    <X size={14} />
+                  </button>
+                </div>
+                {document?.shareToken ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 px-3 py-2 bg-green-50 rounded-xl">
+                      <Check size={13} className="text-green-600" />
+                      <span className="text-xs font-bold text-green-700">Link is active</span>
+                    </div>
+                    <button
+                      onClick={handleRevokeShare}
+                      disabled={sharing}
+                      className="w-full px-3 py-2 text-xs font-bold text-red-600 bg-red-50 rounded-xl hover:bg-red-100 transition-colors disabled:opacity-50"
+                    >
+                      Revoke Link
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Expiry</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {[
+                          { label: 'No expiry', value: null },
+                          { label: '7 days', value: 7 },
+                          { label: '30 days', value: 30 },
+                        ].map(opt => (
+                          <button
+                            key={String(opt.value)}
+                            onClick={() => { setShareExpiresInDays(opt.value); setShareExpireMode('preset'); setShareCustomDate(''); }}
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${shareExpiresInDays === opt.value && shareExpireMode === 'preset' ? 'text-white border-transparent' : 'border-gray-200 text-gray-600'}`}
+                            style={shareExpiresInDays === opt.value && shareExpireMode === 'preset' ? { backgroundColor: brandColor } : {}}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                        <button
+                          onClick={() => { setShareExpireMode('custom'); setShareExpiresInDays(null); }}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border transition-all ${shareExpireMode === 'custom' ? 'text-white border-transparent' : 'border-gray-200 text-gray-600'}`}
+                          style={shareExpireMode === 'custom' ? { backgroundColor: brandColor } : {}}
+                        >
+                          Custom
+                        </button>
+                      </div>
+                      {shareExpireMode === 'custom' && (
+                        <input
+                          type="date"
+                          value={shareCustomDate}
+                          onChange={e => setShareCustomDate(e.target.value)}
+                          className="w-full text-xs border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-[#714B67] transition-colors"
+                        />
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Send to email (optional)</p>
+                      <input
+                        type="email"
+                        placeholder="recipient@email.com"
+                        value={shareRecipientEmail}
+                        onChange={e => setShareRecipientEmail(e.target.value)}
+                        className="w-full text-xs border border-gray-200 rounded-xl px-3 py-1.5 outline-none focus:border-[#714B67] transition-colors"
+                      />
+                    </div>
+                    <button
+                      onClick={handleShareSubmit}
+                      disabled={sharing}
+                      style={{ backgroundColor: brandColor }}
+                      className="w-full py-2 text-xs font-black text-white rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 uppercase tracking-wider"
+                    >
+                      {sharing ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
+                      Copy Link
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
 
           <button
             onClick={handleGeneratePdf}
@@ -684,9 +813,26 @@ const DocumentPreview = () => {
               </div>
               <h3 className="text-xl font-black text-gray-900 tracking-tight">AI Smart Editor</h3>
             </div>
-            <p className="text-sm text-gray-500 font-bold leading-relaxed mb-8">
+            <p className="text-sm text-gray-500 font-bold leading-relaxed mb-5">
               Refine your document using AI. Describe changes like "Add 18% GST" or "Make the overview more formal".
             </p>
+            <div className="mb-5">
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wider mb-2">Tone</p>
+              <div className="grid grid-cols-2 gap-1.5">
+                {AI_TONES.map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setAiTone(t.value)}
+                    className="px-2 py-1.5 rounded-xl text-xs font-bold transition-all border-2"
+                    style={aiTone === t.value
+                      ? { backgroundColor: brandColor, color: '#fff', borderColor: brandColor }
+                      : { backgroundColor: 'transparent', color: '#6b7280', borderColor: '#e5e7eb' }}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <textarea
               className="w-full p-6 border-2 border-gray-100 rounded-3xl h-40 focus:ring-8 focus:ring-primary/5 focus:border-primary outline-none resize-none mb-6 font-medium text-gray-700 bg-gray-50/50"
               placeholder="Tell AI what to change..."

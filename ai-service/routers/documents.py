@@ -15,7 +15,7 @@ import ai_service
 import convex_client
 from middleware.auth import get_current_user
 from middleware.rate_limiter import limiter
-from services.email_service import send_esign_notification, send_document_shared_email
+from services.email_service import send_esign_notification, send_document_shared_email, send_otp_email
 from services.pdf_service import generate_pdf
 from services.template_service import generate_html
 
@@ -113,8 +113,28 @@ async def _sync_pdf(company: dict, document: dict) -> dict:
         return document
 
 
+@router.get("/stats")
+async def get_document_stats(current_user: dict = Depends(get_current_user)):
+    return await convex_client.query("documents:getStats", {"companyId": current_user["companyId"]})
+
+
 @router.get("")
-async def get_documents(current_user: dict = Depends(get_current_user)):
+async def get_documents(
+    current_user: dict = Depends(get_current_user),
+    cursor: Optional[str] = None,
+    limit: int = 20,
+    paginate: bool = False,
+):
+    if paginate or cursor is not None:
+        result = await convex_client.query("documents:listPaginated", {
+            "companyId": current_user["companyId"],
+            "paginationOpts": {
+                "numItems": min(limit, 100),
+                "cursor": cursor,
+                "id": 1,
+            },
+        })
+        return result  # {page: [...], isDone: bool, continueCursor: str}
     return await convex_client.query("documents:list", {"companyId": current_user["companyId"]})
 
 
@@ -144,6 +164,7 @@ async def create_document(req: CreateDocumentRequest, current_user: dict = Depen
 class ProcessAIRequest(BaseModel):
     type: str
     rawText: str
+    tone: str = "professional"
 
 
 @router.post("/process-ai")
@@ -157,7 +178,7 @@ async def process_ai(request: Request, req: ProcessAIRequest, current_user: dict
 
     try:
         ai_data = await ai_service.generate_document_data(
-            req.type, safe_text, company.get("name", ""), company.get("customFields", [])
+            req.type, safe_text, company.get("name", ""), company.get("customFields", []), req.tone
         )
     except genai_errors.APIError as e:
         code = getattr(e, "code", None)
@@ -361,6 +382,27 @@ async def get_shared_document(token: str):
     return {"document": doc, "company": company}
 
 
+class PaymentStatusRequest(BaseModel):
+    paymentStatus: str  # unpaid | paid | overdue | na
+
+
+@router.patch("/{doc_id}/payment-status")
+async def update_payment_status(
+    doc_id: str, req: PaymentStatusRequest, current_user: dict = Depends(get_current_user)
+):
+    valid = {"unpaid", "paid", "overdue", "na"}
+    if req.paymentStatus not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid payment status. Must be: {', '.join(valid)}")
+    doc = await convex_client.query("documents:getById", {"id": doc_id})
+    if not doc or doc["companyId"] != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return await convex_client.mutation("documents:update", {"id": doc_id, "paymentStatus": req.paymentStatus})
+
+
+class OtpRequestModel(BaseModel):
+    email: str
+
+
 class StatusUpdateRequest(BaseModel):
     status: str  # draft | sent | viewed | accepted | rejected
 
@@ -419,10 +461,37 @@ async def create_share_link(
     return {"shareToken": token, "shareUrl": share_url}
 
 
+@router.post("/shared/{token}/request-otp")
+async def request_sign_otp(token: str, req: OtpRequestModel, background_tasks: BackgroundTasks):
+    doc = await convex_client.query("documents:getByShareToken", {"shareToken": token})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found or share link expired")
+    if not (doc.get("data") or {}).get("eSignRequest"):
+        raise HTTPException(status_code=400, detail="E-signature was not requested for this document")
+    if doc.get("eSignature"):
+        raise HTTPException(status_code=400, detail="Document has already been signed")
+
+    import random
+    otp = f"{random.randint(100000, 999999)}"
+    expires_at = int((datetime.utcnow() + timedelta(minutes=15)).timestamp() * 1000)
+
+    await convex_client.mutation("signOtps:create", {
+        "shareToken": token,
+        "email": req.email,
+        "otp": otp,
+        "expiresAt": expires_at,
+    })
+
+    background_tasks.add_task(send_otp_email, req.email, otp, doc.get("title", "Untitled"))
+    return {"message": "OTP sent to your email. Valid for 15 minutes."}
+
+
 class ESignRequest(BaseModel):
     signerName: str
     signerContact: str
     signatureImage: str
+    otpCode: str
+    signerEmail: str
 
 
 @router.post("/shared/{token}/sign")
@@ -436,6 +505,17 @@ async def sign_document(token: str, req: ESignRequest, background_tasks: Backgro
 
     if doc.get("eSignature"):
         raise HTTPException(status_code=400, detail="Document has already been signed")
+
+    # Verify OTP
+    otp_record = await convex_client.query("signOtps:getByShareToken", {"shareToken": token})
+    if not otp_record:
+        raise HTTPException(status_code=400, detail="OTP not found. Please request a new code.")
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    if otp_record["expiresAt"] < now_ms:
+        raise HTTPException(status_code=400, detail="OTP has expired. Please request a new code.")
+    if otp_record["otp"] != req.otpCode:
+        raise HTTPException(status_code=400, detail="Invalid OTP code. Please check and try again.")
+    await convex_client.mutation("signOtps:markUsed", {"id": otp_record["_id"]})
 
     # Upload signature canvas to Cloudinary instead of storing raw base64
     sig_image = req.signatureImage
@@ -455,6 +535,7 @@ async def sign_document(token: str, req: ESignRequest, background_tasks: Backgro
     e_signature = {
         "signerName": req.signerName,
         "signerContact": req.signerContact,
+        "signerEmail": req.signerEmail,
         "signatureImage": sig_image,
         "signedAt": signed_at,
     }

@@ -10,7 +10,7 @@ from pydantic import BaseModel
 
 import convex_client
 from middleware.auth import get_current_user
-from services.email_service import send_verification_email, send_password_reset_email
+from services.email_service import send_verification_email, send_password_reset_email, send_member_joined_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -136,7 +136,20 @@ async def register(data: RegisterRequest):
     try:
         await _create_and_send_verification(user_id, data.email, data.name)
     except Exception:
-        pass  # Don't block registration if email fails; user can resend
+        pass
+
+    # Notify company admin when someone joins via invite
+    if data.inviteCode:
+        try:
+            company = await convex_client.query("companies:getById", {"id": company_id})
+            all_users = await convex_client.query("users:listByCompany", {"companyId": company_id})
+            admin = next((u for u in (all_users or []) if u.get("role") == "admin"), None)
+            if admin and admin.get("email") != data.email:
+                await send_member_joined_email(
+                    admin["email"], data.name, (company or {}).get("name", "your team")
+                )
+        except Exception:
+            pass
 
     return {**_user_response(user), "token": _token(user_id)}
 

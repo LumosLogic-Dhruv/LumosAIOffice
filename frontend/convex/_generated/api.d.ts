@@ -14,6 +14,9 @@ import type * as catalog from "../catalog.js";
 import type * as clients from "../clients.js";
 import type * as companies from "../companies.js";
 import type * as documents from "../documents.js";
+import type * as emailVerificationTokens from "../emailVerificationTokens.js";
+import type * as passwordResetTokens from "../passwordResetTokens.js";
+import type * as signOtps from "../signOtps.js";
 import type * as users from "../users.js";
 
 import type {
@@ -29,6 +32,9 @@ declare const fullApi: ApiFromModules<{
   clients: typeof clients;
   companies: typeof companies;
   documents: typeof documents;
+  emailVerificationTokens: typeof emailVerificationTokens;
+  passwordResetTokens: typeof passwordResetTokens;
+  signOtps: typeof signOtps;
   users: typeof users;
 }>;
 

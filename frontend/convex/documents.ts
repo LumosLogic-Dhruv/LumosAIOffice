@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from "convex/server";
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
@@ -9,6 +10,35 @@ export const list = query({
       .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
       .collect();
     return docs.sort((a, b) => b.updatedAt - a.updatedAt);
+  },
+});
+
+export const listPaginated = query({
+  args: {
+    companyId: v.id("companies"),
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("documents")
+      .withIndex("by_company_updated", (q) => q.eq("companyId", args.companyId))
+      .order("desc")
+      .paginate(args.paginationOpts);
+  },
+});
+
+export const getStats = query({
+  args: { companyId: v.id("companies") },
+  handler: async (ctx, args) => {
+    const docs = await ctx.db
+      .query("documents")
+      .withIndex("by_company", (q) => q.eq("companyId", args.companyId))
+      .collect();
+    const byType: Record<string, number> = {};
+    for (const d of docs) {
+      byType[d.type] = (byType[d.type] || 0) + 1;
+    }
+    return { total: docs.length, byType };
   },
 });
 
@@ -34,6 +64,7 @@ export const create = mutation({
       cloudinaryPdfPublicId: undefined,
       versionHistory: [],
       updatedAt: Date.now(),
+      status: "draft",
     });
     return await ctx.db.get(id);
   },
@@ -62,6 +93,7 @@ export const update = mutation({
     eSignature: v.optional(v.any()),
     status: v.optional(v.string()),
     expiryDate: v.optional(v.union(v.number(), v.null())),
+    paymentStatus: v.optional(v.union(v.string(), v.null())),
     versionSnapshot: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
@@ -72,11 +104,7 @@ export const update = mutation({
     const patch: any = { updatedAt: Date.now() };
     for (const [k, val] of Object.entries(fields)) {
       if (val !== undefined) {
-        if (val === null) {
-          patch[k] = undefined; // Convex uses undefined to unset optional fields
-        } else {
-          patch[k] = val;
-        }
+        patch[k] = val === null ? undefined : val;
       }
     }
 

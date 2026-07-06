@@ -73,6 +73,46 @@ async def send_verification_email(to_email: str, name: str, token: str) -> None:
     await _send(to_email, "Verify your DocuFlow AI account", _base_template("Email Verification", body))
 
 
+async def send_otp_email(to_email: str, otp: str, doc_title: str) -> None:
+    body = f"""
+      <h2 style="color:#1a1a1a;font-size:20px;margin:0 0 12px;font-weight:900;">Your signing verification code</h2>
+      <p style="color:#555555;line-height:1.7;margin:0 0 20px;">
+        Use this code to verify your identity and sign <strong>{doc_title}</strong>.
+      </p>
+      <div style="background:#f4f0f3;border:2px solid #714B67;border-radius:12px;padding:24px 32px;text-align:center;margin:0 0 28px;display:inline-block;">
+        <p style="margin:0;font-size:36px;font-weight:900;letter-spacing:10px;color:#714B67;font-family:monospace;">{otp}</p>
+      </div>
+      <p style="color:#999999;font-size:13px;margin:0;line-height:1.6;">
+        This code expires in <strong>15 minutes</strong>. Do not share it with anyone.
+      </p>"""
+    await _send(
+        to_email,
+        f"Your signing code: {otp}",
+        _base_template("Document Signing Verification", body),
+    )
+
+
+async def send_member_joined_email(
+    admin_email: str, member_name: str, company_name: str
+) -> None:
+    body = f"""
+      <h2 style="color:#1a1a1a;font-size:20px;margin:0 0 12px;font-weight:900;">
+        New team member joined
+      </h2>
+      <p style="color:#555555;line-height:1.7;margin:0 0 28px;">
+        <strong>{member_name}</strong> has joined your workspace <strong>{company_name}</strong>
+        on DocuFlow AI via your invite link.
+      </p>
+      <p style="color:#999999;font-size:13px;margin:0;line-height:1.6;">
+        You can manage team members in your Team settings.
+      </p>"""
+    await _send(
+        admin_email,
+        f"{member_name} joined your DocuFlow AI workspace",
+        _base_template("New Team Member", body),
+    )
+
+
 async def send_document_shared_email(
     to_email: str, doc_title: str, sender_name: str, company_name: str, share_url: str
 ) -> None:

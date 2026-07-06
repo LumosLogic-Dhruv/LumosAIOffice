@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import {
   Users, Copy, Check, Plus, Trash2, RefreshCw, Link as LinkIcon,
   Shield, User, Activity, Eye, Edit3, Share2, FileText, Sparkles,
-  Clock, Lock, Unlock, Loader2
+  Clock, Lock, Unlock, Loader2, Download, X, Send, Mail
 } from 'lucide-react';
 
 const BRAND = '#714B67';
@@ -70,15 +70,19 @@ const Team = () => {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  // Document permissions state
   const [documents, setDocuments] = useState<DocItem[]>([]);
   const [loadingDocs, setLoadingDocs] = useState(false);
   const [updatingPerm, setUpdatingPerm] = useState<string | null>(null);
 
-  // Activity log state
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [loadingLogs, setLoadingLogs] = useState(false);
   const [actionFilter, setActionFilter] = useState<string>('all');
+
+  const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
 
   const isOwner = user?.role === 'admin';
 
@@ -165,15 +169,54 @@ const Team = () => {
     toast.success('Invite link copied!');
   };
 
-  const removeMember = async (memberId: string, memberName: string) => {
-    if (!confirm(`Remove "${memberName}" from your team? They will lose access immediately.`)) return;
+  const sendInviteEmail = async () => {
+    if (!inviteEmail.trim()) return toast.error('Enter an email address');
+    setSendingInvite(true);
     try {
-      await api.delete(`/company/members/${memberId}`);
-      setMembers(prev => prev.filter(m => m._id !== memberId));
-      toast.success(`${memberName} removed from team`);
+      await api.post('/company/invite', { email: inviteEmail.trim() });
+      toast.success('Invite sent to email!');
+      setInviteEmail('');
+      localStorage.setItem('onboardingInviteSent', 'true');
+    } catch {
+      toast.error('Failed to send invite');
+    } finally {
+      setSendingInvite(false);
+    }
+  };
+
+  const confirmRemoveMember = async () => {
+    if (!removeTarget) return;
+    setRemoving(true);
+    try {
+      await api.delete(`/company/members/${removeTarget._id}`);
+      setMembers(prev => prev.filter(m => m._id !== removeTarget._id));
+      toast.success(`${removeTarget.name} removed from team`);
+      setRemoveTarget(null);
     } catch {
       toast.error('Failed to remove member');
+    } finally {
+      setRemoving(false);
     }
+  };
+
+  const downloadActivityCSV = () => {
+    const header = ['Date/Time', 'User', 'Document', 'Action'];
+    const rows = activityLogs.map(log => [
+      new Date(log.timestamp).toLocaleString(),
+      log.userName,
+      log.documentTitle,
+      log.action,
+    ]);
+    const csvContent = [header, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'activity-log.csv';
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const filteredLogs = actionFilter === 'all'
@@ -188,7 +231,39 @@ const Team = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
+      {removeTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-gray-900 text-base">Remove Member</h3>
+              <button onClick={() => setRemoveTarget(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Remove <span className="font-bold text-gray-900">{removeTarget.name}</span> from your team?
+            </p>
+            <p className="text-xs text-red-500 font-semibold">They will lose access immediately.</p>
+            <div className="flex gap-3 pt-1">
+              <button
+                onClick={() => setRemoveTarget(null)}
+                className="flex-1 py-2 rounded-lg border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRemoveMember}
+                disabled={removing}
+                className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-semibold hover:bg-red-600 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {removing ? <Loader2 size={14} className="animate-spin" /> : null}
+                Remove
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-xl font-bold text-gray-900">Team</h1>
         <p className="text-xs text-gray-400 mt-0.5">
@@ -196,7 +271,6 @@ const Team = () => {
         </p>
       </div>
 
-      {/* Invite Card — owner only */}
       {isOwner && (
         <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
           <div className="flex items-center gap-2 mb-3">
@@ -234,6 +308,28 @@ const Team = () => {
               <p className="text-xs text-amber-600 font-medium">
                 Generating a new link invalidates the previous one.
               </p>
+              <div className="flex items-center gap-2 pt-1">
+                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                  <Mail size={13} className="text-gray-400 shrink-0" />
+                  <input
+                    type="email"
+                    placeholder="Send invite to email address"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && sendInviteEmail()}
+                    className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none min-w-0"
+                  />
+                </div>
+                <button
+                  onClick={sendInviteEmail}
+                  disabled={sendingInvite || !inviteEmail.trim()}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50 whitespace-nowrap"
+                  style={{ backgroundColor: BRAND }}
+                >
+                  {sendingInvite ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  Send
+                </button>
+              </div>
             </div>
           ) : (
             <button
@@ -249,7 +345,6 @@ const Team = () => {
         </div>
       )}
 
-      {/* Members table */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
         {members.length === 0 ? (
           <div className="py-16 text-center">
@@ -300,7 +395,7 @@ const Team = () => {
                     <td className="px-5 py-3 text-right">
                       {m._id !== user?._id && m.role !== 'admin' && (
                         <button
-                          onClick={() => removeMember(m._id, m.name)}
+                          onClick={() => setRemoveTarget(m)}
                           className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
                           title="Remove member"
                         >
@@ -316,7 +411,6 @@ const Team = () => {
         )}
       </div>
 
-      {/* Document Edit Permissions — owner control panel */}
       {isOwner && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between">
@@ -419,7 +513,6 @@ const Team = () => {
         </div>
       )}
 
-      {/* Permission info for non-owners */}
       {!isOwner && (
         <div className="bg-gray-50 border border-gray-100 rounded-xl px-5 py-4">
           <div className="flex items-center gap-2 mb-1">
@@ -432,7 +525,6 @@ const Team = () => {
         </div>
       )}
 
-      {/* Activity Log — owner only */}
       {isOwner && (
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50 flex items-center justify-between flex-wrap gap-2">
@@ -442,6 +534,15 @@ const Team = () => {
               </div>
               <h3 className="font-bold text-gray-900 text-sm">Activity Log</h3>
               <span className="text-xs text-gray-400 font-medium">Last 100 actions</span>
+              {activityLogs.length > 0 && (
+                <button
+                  onClick={downloadActivityCSV}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors ml-1"
+                  title="Download CSV"
+                >
+                  <Download size={12} /> Download CSV
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-1 flex-wrap">
               {(['all', 'viewed', 'edited', 'ai_edited', 'shared', 'deleted', 'duplicated'] as const).map(f => (

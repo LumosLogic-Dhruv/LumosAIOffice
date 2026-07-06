@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { Clock, Eye, RotateCcw, ArrowLeft } from 'lucide-react';
+import Breadcrumbs from '../components/Breadcrumbs';
 
 const DocumentHistory = () => {
   const { id } = useParams();
@@ -38,6 +39,7 @@ const DocumentHistory = () => {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      <Breadcrumbs items={[{ label: 'Documents', href: '/dashboard/documents' }, { label: 'Version History' }]} />
       <div className="flex items-center justify-between">
         <Link to={`/dashboard/documents/${id}`} className="flex items-center text-gray-600 hover:text-primary transition-colors">
           <ArrowLeft size={20} className="mr-2" />
