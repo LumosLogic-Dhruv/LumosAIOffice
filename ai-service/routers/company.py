@@ -1,6 +1,7 @@
 import io
+import os
 import secrets
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import cloudinary.uploader
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
@@ -8,6 +9,9 @@ from pydantic import BaseModel
 
 import convex_client
 from middleware.auth import get_current_user
+from services.email_service import send_team_invite_email
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
@@ -103,15 +107,37 @@ async def list_members(current_user: dict = Depends(get_current_user)):
     ]
 
 
+class InviteRequest(BaseModel):
+    email: Optional[str] = None
+
+
 @router.post("/invite")
-async def generate_invite(current_user: dict = Depends(get_current_user)):
+async def generate_invite(
+    data: InviteRequest = Body(default=InviteRequest()),
+    current_user: dict = Depends(get_current_user),
+):
     if current_user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Only the company owner can generate invite links")
+
     invite_code = secrets.token_urlsafe(16)
     await convex_client.mutation("companies:update", {
         "id": current_user["companyId"],
         "inviteCode": invite_code,
     })
+
+    if data.email:
+        try:
+            company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
+            invite_url = f"{FRONTEND_URL}/register?invite={invite_code}"
+            await send_team_invite_email(
+                data.email,
+                (company or {}).get("name", "your team"),
+                invite_url,
+                current_user.get("name", "Your teammate"),
+            )
+        except Exception:
+            pass  # Don't fail invite generation if email fails
+
     return {"inviteCode": invite_code}
 
 

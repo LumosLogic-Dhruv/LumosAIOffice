@@ -58,7 +58,10 @@ export const update = mutation({
     pdfUrl: v.optional(v.string()),
     cloudinaryPdfPublicId: v.optional(v.string()),
     shareToken: v.optional(v.union(v.string(), v.null())),
+    shareExpiresAt: v.optional(v.union(v.number(), v.null())),
     eSignature: v.optional(v.any()),
+    status: v.optional(v.string()),
+    expiryDate: v.optional(v.union(v.number(), v.null())),
     versionSnapshot: v.optional(v.any()),
   },
   handler: async (ctx, args) => {

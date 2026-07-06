@@ -1,35 +1,71 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { Mail, Lock, ArrowRight, Sparkles } from 'lucide-react';
 import Logo from '../components/Logo';
 
+const schema = z.object({
+  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+});
+
+type FormData = z.infer<typeof schema>;
+
 const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [unverified, setUnverified] = useState(false);
+  const [resending, setResending] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const { register, handleSubmit, formState: { errors }, getValues } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
+
+  const onSubmit = async (data: FormData) => {
+    setUnverified(false);
     setLoading(true);
     try {
-      const response = await api.post('/auth/login', formData);
+      const response = await api.post('/auth/login', data);
       login(response.data.token, response.data);
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error: any) {
-      toast.error(error.response?.data?.detail || 'Login failed');
+      const detail = error.response?.data?.detail;
+      if (detail === 'EMAIL_NOT_VERIFIED') {
+        setUnverified(true);
+      } else {
+        toast.error(detail || 'Login failed. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  const handleResendVerification = async () => {
+    const email = getValues('email');
+    if (!email) {
+      toast.error('Please enter your email address first.');
+      return;
+    }
+    setResending(true);
+    try {
+      await api.post('/auth/resend-verification', { email });
+      toast.success('Verification email sent! Please check your inbox.');
+    } catch {
+      toast.error('Failed to resend. Please try again.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex bg-white">
-      {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-16" style={{ backgroundColor: '#714B67' }}>
         <Logo size="lg" onDark />
 
@@ -62,7 +98,6 @@ const Login = () => {
         <p className="text-white/30 text-xs font-semibold">© 2026 DocuFlow AI</p>
       </div>
 
-      {/* Right panel */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-10 flex justify-center">
@@ -75,7 +110,23 @@ const Login = () => {
               <p className="text-gray-400 text-sm font-medium mt-1">Enter your credentials to continue</p>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            {unverified && (
+              <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                <p className="text-amber-800 text-sm font-semibold mb-1">Email not verified</p>
+                <p className="text-amber-700 text-xs leading-relaxed mb-3">
+                  Please verify your email before signing in. Check your inbox for the verification link.
+                </p>
+                <button
+                  onClick={handleResendVerification}
+                  disabled={resending}
+                  className="text-xs font-black underline text-amber-800 disabled:opacity-60"
+                >
+                  {resending ? 'Sending...' : 'Resend verification email'}
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               <div className="space-y-1.5">
                 <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                   <Mail size={12} /> Email Address
@@ -84,24 +135,31 @@ const Login = () => {
                   type="email"
                   placeholder="you@company.com"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  required
+                  {...register('email')}
                 />
+                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                  <Lock size={12} /> Password
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                    <Lock size={12} /> Password
+                  </label>
+                  <Link
+                    to="/forgot-password"
+                    className="text-xs font-black hover:underline"
+                    style={{ color: '#714B67' }}
+                  >
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   type="password"
                   placeholder="••••••••"
                   className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
+                  {...register('password')}
                 />
+                {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
               </div>
 
               <button

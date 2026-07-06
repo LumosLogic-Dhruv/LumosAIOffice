@@ -1,33 +1,64 @@
-import React, { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { User, Mail, Lock, Building2, ArrowRight, CheckCircle2, UserPlus } from 'lucide-react';
 import Logo from '../components/Logo';
 
+const baseSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().min(1, 'Email is required').email('Invalid email address'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  companyName: z.string().optional(),
+});
+
+const schemaWithCompany = baseSchema.extend({
+  companyName: z.string().min(1, 'Company name is required'),
+});
+
+type FormData = {
+  name: string;
+  email: string;
+  password: string;
+  companyName?: string;
+};
+
 const Register = () => {
   const [searchParams] = useSearchParams();
   const inviteCode = searchParams.get('invite') || '';
   const isInvite = !!inviteCode;
-
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', companyName: isInvite ? 'invited' : '' });
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
+    resolver: zodResolver(isInvite ? baseSchema : schemaWithCompany),
+    defaultValues: {
+      name: '',
+      email: '',
+      password: '',
+      companyName: isInvite ? 'invited' : '',
+    },
+  });
+
   useEffect(() => {
     if (isInvite) {
-      setFormData(prev => ({ ...prev, companyName: 'invited' }));
+      reset((prev) => ({ ...prev, companyName: 'invited' }));
     }
-  }, [isInvite]);
+  }, [isInvite, reset]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
-      const payload: any = { ...formData };
-      if (isInvite) payload.inviteCode = inviteCode;
+      const payload: any = { ...data };
+      if (isInvite) {
+        payload.inviteCode = inviteCode;
+        payload.companyName = 'invited';
+      }
       const response = await api.post('/auth/register', payload);
       login(response.data.token, response.data);
       toast.success(isInvite ? 'Joined team successfully!' : 'Account created successfully!');
@@ -48,7 +79,6 @@ const Register = () => {
 
   return (
     <div className="min-h-screen flex bg-white">
-      {/* Left panel */}
       <div className="hidden lg:flex lg:w-1/2 flex-col justify-between p-16" style={{ backgroundColor: '#714B67' }}>
         <Logo size="lg" onDark />
 
@@ -74,7 +104,6 @@ const Register = () => {
         <p className="text-white/30 text-xs font-semibold">© 2026 DocuFlow AI</p>
       </div>
 
-      {/* Right panel */}
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-gray-50">
         <div className="w-full max-w-md">
           <div className="lg:hidden mb-10 flex justify-center">
@@ -99,27 +128,60 @@ const Register = () => {
               )}
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              {([
-                { icon: User, label: 'Full Name', key: 'name', type: 'text', placeholder: 'John Doe' },
-                ...(!isInvite ? [{ icon: Building2, label: 'Company Name', key: 'companyName', type: 'text', placeholder: 'Acme Corp' }] : []),
-                { icon: Mail, label: 'Email Address', key: 'email', type: 'email', placeholder: 'you@company.com' },
-                { icon: Lock, label: 'Password', key: 'password', type: 'password', placeholder: '••••••••' },
-              ] as Array<{icon: any; label: string; key: string; type: string; placeholder: string}>).map(({ icon: Icon, label, key, type, placeholder }) => (
-                <div key={key} className="space-y-1.5">
+            <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <User size={12} /> Full Name
+                </label>
+                <input
+                  type="text"
+                  placeholder="John Doe"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
+                  {...register('name')}
+                />
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
+              </div>
+
+              {!isInvite && (
+                <div className="space-y-1.5">
                   <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
-                    <Icon size={12} /> {label}
+                    <Building2 size={12} /> Company Name
                   </label>
                   <input
-                    type={type}
-                    placeholder={placeholder}
+                    type="text"
+                    placeholder="Acme Corp"
                     className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
-                    value={formData[key as keyof typeof formData]}
-                    onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
-                    required
+                    {...register('companyName')}
                   />
+                  {errors.companyName && <p className="text-xs text-red-500 mt-1">{errors.companyName.message}</p>}
                 </div>
-              ))}
+              )}
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <Mail size={12} /> Email Address
+                </label>
+                <input
+                  type="email"
+                  placeholder="you@company.com"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
+                  {...register('email')}
+                />
+                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
+                  <Lock size={12} /> Password
+                </label>
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
+                  {...register('password')}
+                />
+                {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
+              </div>
 
               <button
                 type="submit"
@@ -131,7 +193,7 @@ const Register = () => {
                   <span>{isInvite ? 'Joining team...' : 'Creating account...'}</span>
                 ) : (
                   <>
-                    <span>Create Account</span>
+                    <span>{isInvite ? 'Join Team' : 'Create Account'}</span>
                     <ArrowRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
                   </>
                 )}

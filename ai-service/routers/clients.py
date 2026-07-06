@@ -33,6 +33,10 @@ async def list_clients(current_user: dict = Depends(get_current_user)):
 
 @router.post("", status_code=201)
 async def create_client(data: ClientCreate, current_user: dict = Depends(get_current_user)):
+    existing = await convex_client.query("clients:list", {"companyId": current_user["companyId"]})
+    if existing and any(c.get("name", "").strip().lower() == data.name.strip().lower() for c in existing):
+        raise HTTPException(status_code=400, detail=f"A client named '{data.name}' already exists.")
+
     args = {"companyId": current_user["companyId"], "name": data.name}
     for field in ("email", "phone", "address", "gstin", "notes"):
         val = getattr(data, field)

@@ -48,3 +48,19 @@ export const deleteById = mutation({
     return { success: true };
   },
 });
+
+export const updateEmailVerified = mutation({
+  args: { id: v.id("users"), emailVerified: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { emailVerified: args.emailVerified });
+    return { success: true };
+  },
+});
+
+export const updatePassword = mutation({
+  args: { id: v.id("users"), password: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { password: args.password });
+    return { success: true };
+  },
+});

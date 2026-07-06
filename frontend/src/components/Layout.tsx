@@ -1,12 +1,27 @@
-import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LayoutDashboard, FileText, User, LogOut, PlusCircle, Users, BookOpen, UserCog } from 'lucide-react';
+import { LayoutDashboard, FileText, User, LogOut, PlusCircle, Users, BookOpen, UserCog, Search, HelpCircle, Command } from 'lucide-react';
 import { clsx } from 'clsx';
 import Logo from './Logo';
+import GlobalSearch from './GlobalSearch';
 
 const Layout = () => {
   const { logout, user } = useAuth();
   const location = useLocation();
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Global Cmd+K / Ctrl+K shortcut
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, []);
 
   const menuItems = [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -16,6 +31,7 @@ const Layout = () => {
     { icon: BookOpen, label: 'Catalog', path: '/dashboard/catalog' },
     { icon: UserCog, label: 'Team', path: '/dashboard/team' },
     { icon: User, label: 'Company Profile', path: '/dashboard/profile' },
+    { icon: HelpCircle, label: 'Help', path: '/dashboard/help' },
   ];
 
   return (
@@ -29,8 +45,23 @@ const Layout = () => {
           </Link>
         </div>
 
+        {/* Search hint button */}
+        <div className="px-3 pt-3">
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition-all text-white/70 hover:text-white text-xs font-medium"
+          >
+            <Search size={13} />
+            <span className="flex-1 text-left">Search...</span>
+            <span className="flex items-center gap-0.5 opacity-60">
+              <Command size={10} />
+              <span>K</span>
+            </span>
+          </button>
+        </div>
+
         {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
+        <nav className="flex-1 px-3 py-3 space-y-0.5">
           {menuItems.map((item) => {
             const isActive = (() => {
               if (location.pathname === item.path) return true;
@@ -86,18 +117,32 @@ const Layout = () => {
             </p>
           </div>
 
-          <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
-            <div className="text-right hidden sm:block">
-              <p className="text-xs font-semibold text-gray-700 leading-none">{user?.email}</p>
-              <p className="text-[10px] font-medium uppercase tracking-wider mt-0.5" style={{ color: '#714B67' }}>
-                {user?.role}
-              </p>
-            </div>
-            <div
-              className="w-7 h-7 rounded-md flex items-center justify-center font-bold text-white text-xs shadow-sm"
-              style={{ backgroundColor: '#714B67' }}
+          <div className="flex items-center gap-3">
+            {/* Search trigger in top bar */}
+            <button
+              onClick={() => setSearchOpen(true)}
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-all"
             >
-              {user?.name?.[0].toUpperCase()}
+              <Search size={12} />
+              <span>Search</span>
+              <kbd className="flex items-center gap-0.5 px-1 py-0.5 bg-gray-100 rounded text-[10px] font-mono">
+                <Command size={9} />K
+              </kbd>
+            </button>
+
+            <div className="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+              <div className="text-right hidden sm:block">
+                <p className="text-xs font-semibold text-gray-700 leading-none">{user?.email}</p>
+                <p className="text-[10px] font-medium uppercase tracking-wider mt-0.5" style={{ color: '#714B67' }}>
+                  {user?.role}
+                </p>
+              </div>
+              <div
+                className="w-7 h-7 rounded-md flex items-center justify-center font-bold text-white text-xs shadow-sm"
+                style={{ backgroundColor: '#714B67' }}
+              >
+                {user?.name?.[0].toUpperCase()}
+              </div>
             </div>
           </div>
         </header>
@@ -108,6 +153,9 @@ const Layout = () => {
           </div>
         </main>
       </div>
+
+      {/* Global Search Modal */}
+      <GlobalSearch open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
 };

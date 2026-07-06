@@ -31,6 +31,10 @@ async def list_catalog(current_user: dict = Depends(get_current_user)):
 
 @router.post("", status_code=201)
 async def create_catalog_item(data: CatalogItem, current_user: dict = Depends(get_current_user)):
+    existing = await convex_client.query("catalog:list", {"companyId": current_user["companyId"]})
+    if existing and any(i.get("name", "").strip().lower() == data.name.strip().lower() for i in existing):
+        raise HTTPException(status_code=400, detail=f"A catalog item named '{data.name}' already exists.")
+
     args: dict = {"companyId": current_user["companyId"], "name": data.name, "rate": data.rate}
     for field in ("description", "unit", "category"):
         val = getattr(data, field)

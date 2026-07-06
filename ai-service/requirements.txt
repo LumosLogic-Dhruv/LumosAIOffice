@@ -26,3 +26,12 @@ cloudinary>=1.36.0
 
 # PDF generation (run `playwright install chromium` after pip install)
 playwright>=1.40.0
+
+# Email (async SMTP)
+aiosmtplib>=3.0.0
+
+# Rate limiting
+slowapi>=0.1.9
+
+# Error monitoring
+sentry-sdk[fastapi]>=2.0.0

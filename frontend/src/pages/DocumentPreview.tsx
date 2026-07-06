@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -22,7 +22,17 @@ import {
   RefreshCw,
   PenLine,
   CheckCircle2,
+  ChevronDown,
+  Clock,
 } from 'lucide-react';
+
+const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
+  draft:    { label: 'Draft',    color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db' },
+  sent:     { label: 'Sent',     color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+  viewed:   { label: 'Viewed',   color: '#7c3aed', bg: '#f5f3ff', border: '#ddd6fe' },
+  accepted: { label: 'Accepted', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+  rejected: { label: 'Rejected', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+};
 
 const DocumentPreview = () => {
   const { id } = useParams();
@@ -43,20 +53,90 @@ const DocumentPreview = () => {
   const [updatingPerm, setUpdatingPerm] = useState(false);
   const [togglingESign, setTogglingESign] = useState(false);
 
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [docStatus, setDocStatus] = useState<string>('draft');
+  const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusDropdownRef = useRef<HTMLDivElement>(null);
+
   const isOwner = user?.role === 'admin';
 
   useEffect(() => {
     fetchData();
   }, [id]);
 
+  useEffect(() => {
+    if (!isManualEdit || !document || !tempDoc) return;
+    const changed = JSON.stringify(tempDoc) !== JSON.stringify(document);
+    setHasUnsavedChanges(changed);
+
+    if (!changed) {
+      setAutoSaveStatus('idle');
+      return;
+    }
+
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = setTimeout(() => {
+      runAutoSave();
+    }, 3000);
+
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [tempDoc, isManualEdit]);
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [hasUnsavedChanges]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) {
+        setShowStatusDropdown(false);
+      }
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const runAutoSave = async () => {
+    setAutoSaveStatus('saving');
+    try {
+      const response = await api.put(`/documents/${id}`, {
+        title: tempDoc.title,
+        clientName: tempDoc.clientName,
+        data: tempDoc.data,
+      });
+      setDocument(response.data);
+      setHasUnsavedChanges(false);
+      setAutoSaveStatus('saved');
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setAutoSaveStatus('idle'), 2500);
+    } catch {
+      setAutoSaveStatus('idle');
+    }
+  };
+
   const fetchData = async () => {
     try {
       const [docRes, compResponse] = await Promise.all([
         api.get(`/documents/${id}`),
-        api.get('/company')
+        api.get('/company'),
       ]);
       setDocument(docRes.data);
       setTempDoc(JSON.parse(JSON.stringify(docRes.data)));
+      setDocStatus(docRes.data.status || 'draft');
       setCompany(compResponse.data);
     } catch (error) {
       toast.error('Failed to load document data');
@@ -117,9 +197,11 @@ const DocumentPreview = () => {
       const response = await api.put(`/documents/${id}`, {
         title: tempDoc.title,
         clientName: tempDoc.clientName,
-        data: tempDoc.data
+        data: tempDoc.data,
       });
       setDocument(response.data);
+      setHasUnsavedChanges(false);
+      setAutoSaveStatus('idle');
       setIsManualEdit(false);
       toast.success('Document saved and PDF updated!');
     } catch (error) {
@@ -162,7 +244,34 @@ const DocumentPreview = () => {
     }
   };
 
+  const handleStatusChange = async (newStatus: string) => {
+    setUpdatingStatus(true);
+    setShowStatusDropdown(false);
+    try {
+      const res = await api.patch(`/documents/${id}/status`, { status: newStatus });
+      setDocument(res.data);
+      setDocStatus(newStatus);
+      toast.success(`Status updated to ${STATUS_CONFIG[newStatus]?.label}`);
+    } catch {
+      toast.error('Failed to update status');
+    } finally {
+      setUpdatingStatus(false);
+    }
+  };
+
+  const handleExpiryDateChange = (dateStr: string) => {
+    const timestamp = dateStr ? new Date(dateStr).getTime() : null;
+    const newDoc = { ...tempDoc, data: { ...tempDoc.data, expiryDate: timestamp } };
+    setTempDoc(newDoc);
+  };
+
   const brandColor = company?.colorTheme?.primary1 || '#714B67';
+
+  const expiryTimestamp = tempDoc?.data?.expiryDate;
+  const expiryDateObj = expiryTimestamp ? new Date(expiryTimestamp) : null;
+  const isExpired = expiryDateObj ? expiryDateObj < new Date() : false;
+
+  const currentStatusCfg = STATUS_CONFIG[docStatus] || STATUS_CONFIG.draft;
 
   if (loading) return (
     <div className="h-full flex items-center justify-center">
@@ -172,7 +281,6 @@ const DocumentPreview = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-20">
-      {/* Header Actions */}
       <div className="flex flex-col md:flex-row justify-between items-center gap-6">
         <Link to="/dashboard" className="flex items-center font-black text-gray-500 hover:text-primary transition-all uppercase text-sm tracking-widest group">
           <ArrowLeft size={20} className="mr-2 group-hover:-translate-x-1 transition-transform" />
@@ -197,7 +305,24 @@ const DocumentPreview = () => {
               <span>Manual Edit</span>
             </button>
           ) : (
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
+              {autoSaveStatus === 'saving' && (
+                <span className="text-xs text-gray-400 font-bold flex items-center gap-1">
+                  <Loader2 size={12} className="animate-spin" />
+                  Auto-saving...
+                </span>
+              )}
+              {autoSaveStatus === 'saved' && (
+                <span className="text-xs text-green-500 font-bold flex items-center gap-1">
+                  <Check size={12} />
+                  Saved
+                </span>
+              )}
+              {hasUnsavedChanges && autoSaveStatus === 'idle' && (
+                <span className="text-xs font-black px-2 py-1 rounded-lg bg-amber-100 text-amber-600 border border-amber-200">
+                  Unsaved changes
+                </span>
+              )}
               <button
                 onClick={handleManualSave}
                 disabled={isSavingManual}
@@ -208,7 +333,12 @@ const DocumentPreview = () => {
                 <span>{isSavingManual ? 'Saving...' : 'Save'}</span>
               </button>
               <button
-                onClick={() => { setIsManualEdit(false); setTempDoc(JSON.parse(JSON.stringify(document))); }}
+                onClick={() => {
+                  setIsManualEdit(false);
+                  setTempDoc(JSON.parse(JSON.stringify(document)));
+                  setHasUnsavedChanges(false);
+                  setAutoSaveStatus('idle');
+                }}
                 className="flex items-center space-x-2 px-6 py-3 border-2 border-gray-200 text-gray-500 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all"
               >
                 <X size={18} />
@@ -262,10 +392,8 @@ const DocumentPreview = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
-        {/* Document Preview Area */}
         <div className="lg:col-span-3">
           <div className="bg-white shadow-2xl border border-gray-100 min-h-[1000px] relative overflow-hidden">
-            {/* Branding Header */}
             <div className="flex justify-between items-start p-10 mb-12" style={{ backgroundColor: brandColor }}>
                <div>
                   {company?.logoUrl ? (
@@ -285,7 +413,6 @@ const DocumentPreview = () => {
                </div>
             </div>
 
-            {/* Content Area */}
             <div className="px-16 space-y-12">
                <div className="flex justify-between items-end">
                   <div className="flex-1 mr-8">
@@ -312,22 +439,43 @@ const DocumentPreview = () => {
                        )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Date Issued</p>
+                  <div className="text-right space-y-3">
+                    <div>
+                      <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">Date Issued</p>
+                      {isManualEdit ? (
+                        <input
+                          type="date"
+                          className="text-lg font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
+                          value={new Date(tempDoc._creationTime ?? Date.now()).toISOString().split('T')[0]}
+                          onChange={(e) => setTempDoc({ ...tempDoc, _creationTime: new Date(e.target.value).getTime() })}
+                        />
+                      ) : (
+                        <p className="text-lg font-black text-gray-900">{new Date(tempDoc._creationTime ?? Date.now()).toLocaleDateString()}</p>
+                      )}
+                    </div>
                     {isManualEdit ? (
-                      <input
-                        type="date"
-                        className="text-lg font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
-                        value={new Date(tempDoc._creationTime ?? Date.now()).toISOString().split('T')[0]}
-                        onChange={(e) => setTempDoc({ ...tempDoc, _creationTime: new Date(e.target.value).getTime() })}
-                      />
-                    ) : (
-                      <p className="text-lg font-black text-gray-900">{new Date(tempDoc._creationTime ?? Date.now()).toLocaleDateString()}</p>
-                    )}
+                      <div>
+                        <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mb-1">Expiry Date</p>
+                        <input
+                          type="date"
+                          className="text-sm font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
+                          value={expiryDateObj ? expiryDateObj.toISOString().split('T')[0] : ''}
+                          onChange={(e) => handleExpiryDateChange(e.target.value)}
+                        />
+                      </div>
+                    ) : expiryDateObj ? (
+                      <div>
+                        <p className={`font-bold uppercase tracking-widest text-xs ${isExpired ? 'text-red-400' : 'text-gray-400'}`}>
+                          {isExpired ? 'Expired' : 'Expires'}
+                        </p>
+                        <p className={`text-sm font-black ${isExpired ? 'text-red-500' : 'text-gray-900'}`}>
+                          {expiryDateObj.toLocaleDateString()}
+                        </p>
+                      </div>
+                    ) : null}
                   </div>
                </div>
 
-               {/* Sections */}
                {tempDoc.data.sections?.map((section: any, idx: number) => (
                  <div key={idx} className="group relative">
                    {isManualEdit ? (
@@ -361,7 +509,6 @@ const DocumentPreview = () => {
                  </div>
                ))}
 
-               {/* Tables */}
                {tempDoc.data.tables?.map((table: any, idx: number) => (
                  <div key={idx} className="space-y-6">
                    <h3 className="text-2xl font-black text-gray-900">{table.title}</h3>
@@ -402,7 +549,6 @@ const DocumentPreview = () => {
                  </div>
                ))}
 
-               {/* E-Signature display */}
                {document?.eSignature && (
                  <div className="rounded-xl border-2 border-green-100 bg-green-50/40 p-5 space-y-3">
                    <div className="flex items-center gap-2">
@@ -422,7 +568,6 @@ const DocumentPreview = () => {
                  </div>
                )}
 
-               {/* Summary */}
                {tempDoc.data.summary && typeof tempDoc.data.summary === 'object' && Object.keys(tempDoc.data.summary).length > 0 && (
                  <div className="flex justify-end pt-10">
                    <div className="w-80 space-y-4 p-8 rounded-4xl bg-gray-50/50 border border-gray-100">
@@ -449,7 +594,6 @@ const DocumentPreview = () => {
                )}
             </div>
 
-            {/* Footer Branding */}
             <div className="mt-32 pt-10 border-t border-gray-100 flex justify-between items-end px-16 pb-16">
                <div className="space-y-4">
                   <div className="space-y-1">
@@ -482,8 +626,57 @@ const DocumentPreview = () => {
           </div>
         </div>
 
-        {/* AI Sidebar */}
         <div className="lg:col-span-1 space-y-8">
+          <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
+            <div className="flex items-center space-x-3 mb-4">
+              <div className="p-2 bg-gray-100 rounded-xl">
+                <Clock size={18} className="text-gray-500" />
+              </div>
+              <h3 className="text-sm font-black text-gray-900">Document Status</h3>
+            </div>
+            <div
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider mb-4 border"
+              style={{ color: currentStatusCfg.color, backgroundColor: currentStatusCfg.bg, borderColor: currentStatusCfg.border }}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: currentStatusCfg.color }} />
+              {currentStatusCfg.label}
+            </div>
+            {isOwner && (
+              <div className="relative" ref={statusDropdownRef}>
+                <button
+                  onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+                  disabled={updatingStatus}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold border-2 border-gray-100 hover:bg-gray-50 transition-all text-gray-600"
+                >
+                  {updatingStatus ? (
+                    <span className="flex items-center gap-1.5">
+                      <Loader2 size={12} className="animate-spin" />
+                      Updating...
+                    </span>
+                  ) : (
+                    <span>Change Status</span>
+                  )}
+                  <ChevronDown size={13} />
+                </button>
+                {showStatusDropdown && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl shadow-2xl border border-gray-100 z-20 overflow-hidden">
+                    {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+                      <button
+                        key={key}
+                        onClick={() => handleStatusChange(key)}
+                        className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold hover:bg-gray-50 transition-all text-left"
+                        style={{ color: cfg.color }}
+                      >
+                        <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: cfg.color }} />
+                        {cfg.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="bg-white p-8 rounded-[40px] shadow-xl border border-gray-100">
             <div className="flex items-center space-x-3 text-primary mb-6">
               <div className="p-2 bg-primary/10 rounded-xl">
@@ -516,7 +709,6 @@ const DocumentPreview = () => {
             )}
           </div>
 
-          {/* Permission control — owner only */}
           {isOwner && (
             <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
               <div className="flex items-center space-x-3 mb-4">
@@ -547,7 +739,7 @@ const DocumentPreview = () => {
               </div>
             </div>
           )}
-          {/* E-Signature card — owner only */}
+
           {isOwner && (
             <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
               <div className="flex items-center space-x-3 mb-4">
@@ -599,7 +791,6 @@ const DocumentPreview = () => {
         </div>
       </div>
 
-      {/* PDF Viewer Modal */}
       {showPdfModal && document.pdfUrl && (
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
           <div className="flex items-center justify-between px-6 py-3 bg-gray-900 shrink-0">

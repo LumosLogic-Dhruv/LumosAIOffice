@@ -1,19 +1,51 @@
+import os
+import re
 import traceback
 import time
 import secrets
+from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
 import cloudinary.uploader
-import io
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from google.genai import errors as genai_errors
 from pydantic import BaseModel
 
 import ai_service
 import convex_client
 from middleware.auth import get_current_user
+from middleware.rate_limiter import limiter
+from services.email_service import send_esign_notification, send_document_shared_email
 from services.pdf_service import generate_pdf
 from services.template_service import generate_html
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+_INJECTION_RE = re.compile(
+    r"(ignore\s+(previous|all|above)\s+instructions|system\s+prompt|"
+    r"you\s+are\s+now\s+|act\s+as\s+[a-z]|disregard\s+(all|previous)|"
+    r"jailbreak|pretend\s+to\s+be|forget\s+(all|previous)\s+instructions|"
+    r"override\s+(instructions|system)|new\s+instructions\s*:)",
+    re.IGNORECASE,
+)
+_MAX_AI_INPUT = 5000
+
+
+def _validate_ai_input(text: str) -> str:
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Input cannot be empty.")
+    if len(text) > _MAX_AI_INPUT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Input too long. Maximum {_MAX_AI_INPUT} characters allowed.",
+        )
+    if _INJECTION_RE.search(text):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid input detected. Please describe your document content naturally.",
+        )
+    return text
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
 
@@ -49,6 +81,15 @@ async def _log_activity(current_user: dict, document: dict, action: str):
         })
     except Exception:
         pass
+
+
+async def _sync_pdf_task(company_id: str, document: dict) -> None:
+    """Background task wrapper — fetches fresh company then generates PDF."""
+    try:
+        company = await convex_client.query("companies:getById", {"id": company_id})
+        await _sync_pdf(company, document)
+    except Exception:
+        traceback.print_exc()
 
 
 async def _sync_pdf(company: dict, document: dict) -> dict:
@@ -106,14 +147,17 @@ class ProcessAIRequest(BaseModel):
 
 
 @router.post("/process-ai")
-async def process_ai(req: ProcessAIRequest, current_user: dict = Depends(get_current_user)):
+@limiter.limit("20/hour")
+async def process_ai(request: Request, req: ProcessAIRequest, current_user: dict = Depends(get_current_user)):
     company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
     if not company:
         raise HTTPException(status_code=404, detail="Company profile not found.")
 
+    safe_text = _validate_ai_input(req.rawText)
+
     try:
         ai_data = await ai_service.generate_document_data(
-            req.type, req.rawText, company.get("name", ""), company.get("customFields", [])
+            req.type, safe_text, company.get("name", ""), company.get("customFields", [])
         )
     except genai_errors.APIError as e:
         code = getattr(e, "code", None)
@@ -170,6 +214,7 @@ class UpdateDocumentRequest(BaseModel):
 async def update_document(
     doc_id: str,
     req: UpdateDocumentRequest,
+    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
 ):
     doc = await convex_client.query("documents:getById", {"id": doc_id})
@@ -195,8 +240,7 @@ async def update_document(
             update_args[field] = value
 
     updated = await convex_client.mutation("documents:update", update_args)
-    company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
-    updated = await _sync_pdf(company, updated)
+    background_tasks.add_task(_sync_pdf_task, current_user["companyId"], updated)
     await _log_activity(current_user, updated, "edited")
     return updated
 
@@ -206,7 +250,8 @@ class EditAIRequest(BaseModel):
 
 
 @router.post("/{doc_id}/edit-ai")
-async def edit_ai(doc_id: str, req: EditAIRequest, current_user: dict = Depends(get_current_user)):
+@limiter.limit("20/hour")
+async def edit_ai(request: Request, doc_id: str, req: EditAIRequest, background_tasks: BackgroundTasks, current_user: dict = Depends(get_current_user)):
     doc = await convex_client.query("documents:getById", {"id": doc_id})
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
@@ -218,9 +263,11 @@ async def edit_ai(doc_id: str, req: EditAIRequest, current_user: dict = Depends(
 
     company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
 
+    safe_instruction = _validate_ai_input(req.instruction)
+
     try:
         updated_data = await ai_service.edit_document_data(
-            doc["type"], req.instruction, doc["data"], (company or {}).get("customFields", [])
+            doc["type"], safe_instruction, doc["data"], (company or {}).get("customFields", [])
         )
     except genai_errors.APIError as e:
         code = getattr(e, "code", None)
@@ -243,7 +290,7 @@ async def edit_ai(doc_id: str, req: EditAIRequest, current_user: dict = Depends(
         "versionSnapshot": version_snapshot,
     })
 
-    updated = await _sync_pdf(company, updated)
+    background_tasks.add_task(_sync_pdf_task, current_user["companyId"], updated)
     await _log_activity(current_user, updated, "ai_edited")
     return updated
 
@@ -293,17 +340,6 @@ async def duplicate_document(doc_id: str, current_user: dict = Depends(get_curre
     return new_doc
 
 
-@router.post("/{doc_id}/share")
-async def create_share_link(doc_id: str, current_user: dict = Depends(get_current_user)):
-    doc = await convex_client.query("documents:getById", {"id": doc_id})
-    if not doc or doc["companyId"] != current_user["companyId"]:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    token = doc.get("shareToken") or secrets.token_urlsafe(20)
-    await convex_client.mutation("documents:update", {"id": doc_id, "shareToken": token})
-    await _log_activity(current_user, doc, "shared")
-    return {"shareToken": token}
-
 
 @router.delete("/{doc_id}/share")
 async def revoke_share_link(doc_id: str, current_user: dict = Depends(get_current_user)):
@@ -319,8 +355,68 @@ async def get_shared_document(token: str):
     doc = await convex_client.query("documents:getByShareToken", {"shareToken": token})
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found or share link revoked")
+    if doc.get("shareExpiresAt") and int(time.time() * 1000) > doc["shareExpiresAt"]:
+        raise HTTPException(status_code=410, detail="This share link has expired.")
     company = await convex_client.query("companies:getById", {"id": doc["companyId"]})
     return {"document": doc, "company": company}
+
+
+class StatusUpdateRequest(BaseModel):
+    status: str  # draft | sent | viewed | accepted | rejected
+
+
+@router.patch("/{doc_id}/status")
+async def update_document_status(
+    doc_id: str, req: StatusUpdateRequest, current_user: dict = Depends(get_current_user)
+):
+    valid = {"draft", "sent", "viewed", "accepted", "rejected"}
+    if req.status not in valid:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {', '.join(valid)}")
+    doc = await convex_client.query("documents:getById", {"id": doc_id})
+    if not doc or doc["companyId"] != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    updated = await convex_client.mutation("documents:update", {"id": doc_id, "status": req.status})
+    return updated
+
+
+class ShareRequest(BaseModel):
+    recipientEmail: Optional[str] = None
+    expiresInDays: Optional[int] = None
+
+
+@router.post("/{doc_id}/share")
+async def create_share_link(
+    doc_id: str, req: ShareRequest = ShareRequest(), background_tasks: BackgroundTasks = None,
+    current_user: dict = Depends(get_current_user)
+):
+    doc = await convex_client.query("documents:getById", {"id": doc_id})
+    if not doc or doc["companyId"] != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    token = doc.get("shareToken") or secrets.token_urlsafe(20)
+    update_args: dict = {"id": doc_id, "shareToken": token, "status": "sent"}
+
+    if req.expiresInDays:
+        expires_at = int((datetime.utcnow() + timedelta(days=req.expiresInDays)).timestamp() * 1000)
+        update_args["shareExpiresAt"] = expires_at
+
+    await convex_client.mutation("documents:update", update_args)
+    await _log_activity(current_user, doc, "shared")
+
+    share_url = f"{FRONTEND_URL}/shared/{token}"
+
+    if req.recipientEmail and background_tasks:
+        company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
+        background_tasks.add_task(
+            send_document_shared_email,
+            req.recipientEmail,
+            doc.get("title", "Untitled"),
+            current_user.get("name", "Someone"),
+            (company or {}).get("name", ""),
+            share_url,
+        )
+
+    return {"shareToken": token, "shareUrl": share_url}
 
 
 class ESignRequest(BaseModel):
@@ -330,7 +426,7 @@ class ESignRequest(BaseModel):
 
 
 @router.post("/shared/{token}/sign")
-async def sign_document(token: str, req: ESignRequest):
+async def sign_document(token: str, req: ESignRequest, background_tasks: BackgroundTasks):
     doc = await convex_client.query("documents:getByShareToken", {"shareToken": token})
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found or share link expired")
@@ -341,11 +437,26 @@ async def sign_document(token: str, req: ESignRequest):
     if doc.get("eSignature"):
         raise HTTPException(status_code=400, detail="Document has already been signed")
 
+    # Upload signature canvas to Cloudinary instead of storing raw base64
+    sig_image = req.signatureImage
+    if req.signatureImage.startswith("data:"):
+        try:
+            result = cloudinary.uploader.upload(
+                req.signatureImage,
+                folder="docuflow-signatures",
+                resource_type="image",
+                public_id=f"sig_{doc['_id']}_{int(time.time())}",
+            )
+            sig_image = result["secure_url"]
+        except Exception:
+            traceback.print_exc()  # Fall back to base64 if upload fails
+
+    signed_at = int(time.time() * 1000)
     e_signature = {
         "signerName": req.signerName,
         "signerContact": req.signerContact,
-        "signatureImage": req.signatureImage,
-        "signedAt": int(time.time() * 1000),
+        "signatureImage": sig_image,
+        "signedAt": signed_at,
     }
 
     updated = await convex_client.mutation("documents:update", {
@@ -353,7 +464,19 @@ async def sign_document(token: str, req: ESignRequest):
         "eSignature": e_signature,
     })
 
-    company = await convex_client.query("companies:getById", {"id": doc["companyId"]})
-    await _sync_pdf(company, updated)
+    background_tasks.add_task(_sync_pdf_task, doc["companyId"], updated)
 
-    return {"success": True, "signedAt": e_signature["signedAt"]}
+    # Notify document owner via email
+    try:
+        users = await convex_client.query("users:listByCompany", {"companyId": doc["companyId"]})
+        admin = next((u for u in (users or []) if u.get("role") == "admin"), None)
+        if admin:
+            doc_url = f"{FRONTEND_URL}/dashboard/documents/{doc['_id']}"
+            background_tasks.add_task(
+                send_esign_notification,
+                admin["email"], req.signerName, doc.get("title", "Untitled"), doc_url,
+            )
+    except Exception:
+        pass
+
+    return {"success": True, "signedAt": signed_at}

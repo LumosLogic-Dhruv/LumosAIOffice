@@ -4,10 +4,11 @@ dist/
 build/
 .DS_Store
 
-# Environment Variables
+# Environment Variables — never commit secrets
 .env
 .env.local
 .env.*.local
+ai-service/.env
 
 # Logs
 npm-debug.log*

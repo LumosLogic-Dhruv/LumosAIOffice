@@ -1,7 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { BookOpen, Plus, Edit2, Trash2, Search, Tag, X, Save, DollarSign } from 'lucide-react';
+import { BookOpen, Plus, Edit2, Trash2, Search, Tag, X, Save } from 'lucide-react';
 
 const BRAND = '#714B67';
 
@@ -15,7 +18,18 @@ interface CatalogItem {
   createdAt: number;
 }
 
-const emptyForm = { name: '', description: '', unit: '', rate: '', category: '' };
+const catalogSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  rate: z
+    .string()
+    .min(1, 'Rate is required')
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, { message: 'Rate must be a positive number' }),
+  description: z.string().optional(),
+  unit: z.string().optional(),
+  category: z.string().optional(),
+});
+
+type CatalogFormData = z.infer<typeof catalogSchema>;
 
 const Catalog = () => {
   const [items, setItems] = useState<CatalogItem[]>([]);
@@ -23,8 +37,11 @@ const Catalog = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<CatalogItem | null>(null);
-  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<CatalogFormData>({
+    resolver: zodResolver(catalogSchema),
+  });
 
   useEffect(() => { fetchItems(); }, []);
 
@@ -39,23 +56,37 @@ const Catalog = () => {
     }
   };
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (item: CatalogItem) => {
-    setEditing(item);
-    setForm({ name: item.name, description: item.description || '', unit: item.unit || '', rate: String(item.rate), category: item.category || '' });
+  const openCreate = () => {
+    setEditing(null);
+    reset({ name: '', description: '', unit: '', rate: '', category: '' });
     setShowModal(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return toast.error('Name is required');
-    if (!form.rate || isNaN(parseFloat(form.rate))) return toast.error('Valid rate is required');
+  const openEdit = (item: CatalogItem) => {
+    setEditing(item);
+    reset({
+      name: item.name,
+      description: item.description || '',
+      unit: item.unit || '',
+      rate: String(item.rate),
+      category: item.category || '',
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    reset();
+  };
+
+  const onSubmit = async (data: CatalogFormData) => {
     setSaving(true);
     try {
-      const payload: any = { name: form.name.trim(), rate: parseFloat(form.rate) };
-      if (form.description.trim()) payload.description = form.description.trim();
-      if (form.unit.trim()) payload.unit = form.unit.trim();
-      if (form.category.trim()) payload.category = form.category.trim();
+      const payload: any = { name: data.name.trim(), rate: parseFloat(data.rate) };
+      if (data.description?.trim()) payload.description = data.description.trim();
+      if (data.unit?.trim()) payload.unit = data.unit.trim();
+      if (data.category?.trim()) payload.category = data.category.trim();
+
       if (editing) {
         const res = await api.put(`/catalog/${editing._id}`, payload);
         setItems(items.map(i => i._id === editing._id ? res.data : i));
@@ -65,7 +96,7 @@ const Catalog = () => {
         setItems([res.data, ...items]);
         toast.success('Item added');
       }
-      setShowModal(false);
+      closeModal();
     } catch {
       toast.error('Failed to save item');
     } finally {
@@ -115,7 +146,6 @@ const Catalog = () => {
         </button>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
@@ -126,7 +156,6 @@ const Catalog = () => {
         />
       </div>
 
-      {/* Table */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 py-16 text-center">
           <div className="p-4 bg-gray-50 rounded-xl inline-block mb-3">
@@ -185,44 +214,79 @@ const Catalog = () => {
         </div>
       )}
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-sm">{editing ? 'Edit Item' : 'New Catalog Item'}</h3>
-              <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+              <button onClick={closeModal} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-4">
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-500">Name *</label>
-                <input type="text" placeholder="e.g., Web Development" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50" onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} required />
+                <input
+                  type="text"
+                  placeholder="e.g., Web Development"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 focus:border-[#714B67]"
+                  {...register('name')}
+                />
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-500">Description</label>
-                <textarea className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 h-16 resize-none" onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''} placeholder="Brief description..." value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+                <textarea
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 h-16 resize-none focus:border-[#714B67]"
+                  placeholder="Brief description..."
+                  {...register('description')}
+                />
+                {errors.description && <p className="text-xs text-red-500 mt-1">{errors.description.message}</p>}
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-500">Rate (₹) *</label>
-                  <input type="number" step="0.01" min="0" placeholder="0.00" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50" onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''} value={form.rate} onChange={e => setForm({ ...form, rate: e.target.value })} required />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 focus:border-[#714B67]"
+                    {...register('rate')}
+                  />
+                  {errors.rate && <p className="text-xs text-red-500 mt-1">{errors.rate.message}</p>}
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs font-semibold text-gray-500">Unit</label>
-                  <input type="text" placeholder="hr, day, unit..." className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50" onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''} value={form.unit} onChange={e => setForm({ ...form, unit: e.target.value })} />
+                  <input
+                    type="text"
+                    placeholder="hr, day, unit..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 focus:border-[#714B67]"
+                    {...register('unit')}
+                  />
+                  {errors.unit && <p className="text-xs text-red-500 mt-1">{errors.unit.message}</p>}
                 </div>
               </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-500">Category</label>
-                <input type="text" placeholder="e.g., Development, Design, Support" className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50" onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''} value={form.category} onChange={e => setForm({ ...form, category: e.target.value })} list="categories-list" />
+                <input
+                  type="text"
+                  placeholder="e.g., Development, Design, Support"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 focus:border-[#714B67]"
+                  list="categories-list"
+                  {...register('category')}
+                />
                 <datalist id="categories-list">
                   {categories.map(c => <option key={c} value={c!} />)}
                 </datalist>
+                {errors.category && <p className="text-xs text-red-500 mt-1">{errors.category.message}</p>}
               </div>
+
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all">Cancel</button>
+                <button type="button" onClick={closeModal} className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all">Cancel</button>
                 <button type="submit" disabled={saving} style={{ backgroundColor: BRAND }} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2 shadow">
                   <Save size={14} />
                   {saving ? 'Saving...' : 'Save'}

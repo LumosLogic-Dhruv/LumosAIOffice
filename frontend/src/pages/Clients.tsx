@@ -1,4 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { Users, Plus, Edit2, Trash2, Search, Mail, Phone, X, Save, Building2 } from 'lucide-react';
@@ -16,7 +19,16 @@ interface Client {
   createdAt: number;
 }
 
-const emptyForm = { name: '', email: '', phone: '', address: '', gstin: '', notes: '' };
+const clientSchema = z.object({
+  name: z.string().min(2, 'Name must be at least 2 characters'),
+  email: z.string().email('Invalid email address').or(z.literal('')).optional(),
+  phone: z.string().optional(),
+  address: z.string().optional(),
+  gstin: z.string().optional(),
+  notes: z.string().optional(),
+});
+
+type ClientFormData = z.infer<typeof clientSchema>;
 
 const Clients = () => {
   const [clients, setClients] = useState<Client[]>([]);
@@ -24,8 +36,11 @@ const Clients = () => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
-  const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+
+  const { register, handleSubmit, formState: { errors }, reset } = useForm<ClientFormData>({
+    resolver: zodResolver(clientSchema),
+  });
 
   useEffect(() => { fetchClients(); }, []);
 
@@ -40,20 +55,37 @@ const Clients = () => {
     }
   };
 
-  const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (c: Client) => {
-    setEditing(c);
-    setForm({ name: c.name, email: c.email || '', phone: c.phone || '', address: c.address || '', gstin: c.gstin || '', notes: c.notes || '' });
+  const openCreate = () => {
+    setEditing(null);
+    reset({ name: '', email: '', phone: '', address: '', gstin: '', notes: '' });
     setShowModal(true);
   };
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!form.name.trim()) return toast.error('Name is required');
+  const openEdit = (c: Client) => {
+    setEditing(c);
+    reset({
+      name: c.name,
+      email: c.email || '',
+      phone: c.phone || '',
+      address: c.address || '',
+      gstin: c.gstin || '',
+      notes: c.notes || '',
+    });
+    setShowModal(true);
+  };
+
+  const closeModal = () => {
+    setShowModal(false);
+    reset();
+  };
+
+  const onSubmit = async (data: ClientFormData) => {
     setSaving(true);
     try {
       const payload: any = {};
-      for (const [k, v] of Object.entries(form)) { if (v.trim()) payload[k] = v.trim(); }
+      for (const [k, v] of Object.entries(data)) {
+        if (v && String(v).trim()) payload[k] = String(v).trim();
+      }
       if (editing) {
         const res = await api.put(`/clients/${editing._id}`, payload);
         setClients(clients.map(c => c._id === editing._id ? res.data : c));
@@ -63,7 +95,7 @@ const Clients = () => {
         setClients([res.data, ...clients]);
         toast.success('Client added');
       }
-      setShowModal(false);
+      closeModal();
     } catch {
       toast.error('Failed to save client');
     } finally {
@@ -112,7 +144,6 @@ const Clients = () => {
         </button>
       </div>
 
-      {/* Search */}
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
@@ -123,7 +154,6 @@ const Clients = () => {
         />
       </div>
 
-      {/* Grid */}
       {filtered.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 py-16 text-center">
           <div className="p-4 bg-gray-50 rounded-xl inline-block mb-3">
@@ -182,51 +212,83 @@ const Clients = () => {
         </div>
       )}
 
-      {/* Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h3 className="font-bold text-gray-900 text-sm">{editing ? 'Edit Client' : 'New Client'}</h3>
-              <button onClick={() => setShowModal(false)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+              <button onClick={closeModal} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
                 <X size={16} />
               </button>
             </div>
-            <form onSubmit={handleSave} className="p-6 space-y-4">
-              {[
-                { label: 'Name *', key: 'name', placeholder: 'Client or company name' },
-                { label: 'Email', key: 'email', placeholder: 'contact@example.com' },
-                { label: 'Phone', key: 'phone', placeholder: '+91 98765 43210' },
-                { label: 'GSTIN', key: 'gstin', placeholder: 'GST or tax number' },
-                { label: 'Address', key: 'address', placeholder: 'Full address' },
-              ].map(({ label, key, placeholder }) => (
-                <div key={key} className="space-y-1">
-                  <label className="text-xs font-semibold text-gray-500">{label}</label>
-                  <input
-                    type="text"
-                    placeholder={placeholder}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50"
-                    onFocus={e => e.target.style.borderColor = BRAND}
-                    onBlur={e => e.target.style.borderColor = ''}
-                    value={(form as any)[key]}
-                    onChange={e => setForm({ ...form, [key]: e.target.value })}
-                    required={key === 'name'}
-                  />
-                </div>
-              ))}
+            <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Name *</label>
+                <input
+                  type="text"
+                  placeholder="Client or company name"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
+                  {...register('name')}
+                />
+                {errors.name && <p className="text-xs text-red-500 mt-1">{errors.name.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Email</label>
+                <input
+                  type="text"
+                  placeholder="contact@example.com"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
+                  {...register('email')}
+                />
+                {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Phone</label>
+                <input
+                  type="text"
+                  placeholder="+91 98765 43210"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
+                  {...register('phone')}
+                />
+                {errors.phone && <p className="text-xs text-red-500 mt-1">{errors.phone.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">GSTIN</label>
+                <input
+                  type="text"
+                  placeholder="GST or tax number"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
+                  {...register('gstin')}
+                />
+                {errors.gstin && <p className="text-xs text-red-500 mt-1">{errors.gstin.message}</p>}
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-semibold text-gray-500">Address</label>
+                <input
+                  type="text"
+                  placeholder="Full address"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
+                  {...register('address')}
+                />
+                {errors.address && <p className="text-xs text-red-500 mt-1">{errors.address.message}</p>}
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-semibold text-gray-500">Notes</label>
                 <textarea
-                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 h-20 resize-none"
-                  onFocus={e => e.target.style.borderColor = BRAND}
-                  onBlur={e => e.target.style.borderColor = ''}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 h-20 resize-none focus:border-[#714B67]"
                   placeholder="Internal notes..."
-                  value={form.notes}
-                  onChange={e => setForm({ ...form, notes: e.target.value })}
+                  {...register('notes')}
                 />
+                {errors.notes && <p className="text-xs text-red-500 mt-1">{errors.notes.message}</p>}
               </div>
+
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all">
+                <button type="button" onClick={closeModal} className="flex-1 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all">
                   Cancel
                 </button>
                 <button type="submit" disabled={saving} style={{ backgroundColor: BRAND }} className="flex-1 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow">

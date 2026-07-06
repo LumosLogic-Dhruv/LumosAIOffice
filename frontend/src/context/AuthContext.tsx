@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import api from '../services/api';
+import toast from 'react-hot-toast';
 
 interface User {
   _id: string;
@@ -7,6 +8,7 @@ interface User {
   email: string;
   role: string;
   companyId: string;
+  emailVerified?: boolean;
 }
 
 interface AuthContextType {
@@ -18,9 +20,14 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+const IDLE_CHECK_INTERVAL_MS = 60 * 1000; // check every minute
+const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchstart', 'click'];
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const lastActivityRef = useRef<number>(Date.now());
 
   useEffect(() => {
     const initAuth = async () => {
@@ -29,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const response = await api.get('/auth/me');
           setUser(response.data);
-        } catch (error) {
+        } catch {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
         }
@@ -39,17 +46,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = (token: string, userData: User) => {
-    localStorage.setItem('token', token);
-    localStorage.setItem('user', JSON.stringify(userData));
-    setUser(userData);
-  };
-
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setUser(null);
-  };
+  }, []);
+
+  const login = useCallback((token: string, userData: User) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setUser(userData);
+    lastActivityRef.current = Date.now();
+  }, []);
+
+  // ── Idle session timeout ──────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user) return;
+
+    const resetActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    ACTIVITY_EVENTS.forEach((event) =>
+      document.addEventListener(event, resetActivity, { passive: true })
+    );
+
+    const interval = setInterval(() => {
+      if (Date.now() - lastActivityRef.current > IDLE_TIMEOUT_MS) {
+        logout();
+        toast.error('Session expired due to inactivity. Please sign in again.', {
+          duration: 6000,
+        });
+      }
+    }, IDLE_CHECK_INTERVAL_MS);
+
+    return () => {
+      ACTIVITY_EVENTS.forEach((event) =>
+        document.removeEventListener(event, resetActivity)
+      );
+      clearInterval(interval);
+    };
+  }, [user, logout]);
 
   return (
     <AuthContext.Provider value={{ user, login, logout, loading }}>

@@ -8,6 +8,7 @@ export default defineSchema({
     password: v.string(),
     role: v.string(),
     companyId: v.id("companies"),
+    emailVerified: v.optional(v.boolean()),
   }).index("by_email", ["email"]),
 
   companies: defineTable({
@@ -36,7 +37,10 @@ export default defineSchema({
     versionHistory: v.array(v.any()),
     updatedAt: v.number(),
     shareToken: v.optional(v.string()),
+    shareExpiresAt: v.optional(v.number()),
     eSignature: v.optional(v.any()),
+    status: v.optional(v.string()),
+    expiryDate: v.optional(v.number()),
   }).index("by_company", ["companyId"])
     .index("by_share_token", ["shareToken"]),
 
@@ -70,4 +74,20 @@ export default defineSchema({
     action: v.string(),
     timestamp: v.number(),
   }).index("by_company", ["companyId"]),
+
+  passwordResetTokens: defineTable({
+    email: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+    used: v.boolean(),
+  }).index("by_token", ["token"])
+    .index("by_email", ["email"]),
+
+  emailVerificationTokens: defineTable({
+    userId: v.string(),
+    email: v.string(),
+    token: v.string(),
+    expiresAt: v.number(),
+  }).index("by_token", ["token"])
+    .index("by_user", ["userId"]),
 });

@@ -6,6 +6,9 @@ import LandingPage from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
+import VerifyEmail from './pages/VerifyEmail';
 import CompanyProfile from './pages/CompanyProfile';
 import CreateDocument from './pages/CreateDocument';
 import DocumentPreview from './pages/DocumentPreview';
@@ -19,17 +22,32 @@ import Catalog from './pages/Catalog';
 import SharedDocumentView from './pages/SharedDocumentView';
 import Team from './pages/Team';
 import Documents from './pages/Documents';
+import Help from './pages/Help';
+
+const Spinner = () => (
+  <div className="h-screen flex items-center justify-center">
+    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#714B67]" />
+  </div>
+);
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#714B67]" /></div>;
+  if (loading) return <Spinner />;
   if (!user) return <Navigate to="/login" />;
+  return <>{children}</>;
+};
+
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+  if (loading) return <Spinner />;
+  if (!user) return <Navigate to="/login" />;
+  if (user.role !== 'admin' && user.role !== 'root') return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
-  if (loading) return <div className="h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#714B67]" /></div>;
+  if (loading) return <Spinner />;
   if (user) return <Navigate to="/dashboard" />;
   return <>{children}</>;
 };
@@ -50,6 +68,9 @@ function App() {
           {/* Auth */}
           <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
           <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+          <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+          <Route path="/reset-password" element={<PublicRoute><ResetPassword /></PublicRoute>} />
+          <Route path="/verify-email" element={<VerifyEmail />} />
 
           {/* App */}
           <Route path="/dashboard" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
@@ -62,10 +83,11 @@ function App() {
             <Route path="clients" element={<Clients />} />
             <Route path="catalog" element={<Catalog />} />
             <Route path="team" element={<Team />} />
+            <Route path="help" element={<Help />} />
           </Route>
 
-          {/* Admin Console */}
-          <Route path="/admin" element={<ProtectedRoute><AdminDashboard /></ProtectedRoute>} />
+          {/* Admin Console — role-checked at route level */}
+          <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

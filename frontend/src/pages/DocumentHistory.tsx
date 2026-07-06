@@ -28,7 +28,7 @@ const DocumentHistory = () => {
     try {
       await api.put(`/documents/${id}`, { data: versionData });
       toast.success('Version restored!');
-      window.location.href = `/documents/${id}`;
+      window.location.href = `/dashboard/documents/${id}`;
     } catch (error) {
       toast.error('Failed to restore version');
     }
@@ -39,7 +39,7 @@ const DocumentHistory = () => {
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
-        <Link to={`/documents/${id}`} className="flex items-center text-gray-600 hover:text-primary transition-colors">
+        <Link to={`/dashboard/documents/${id}`} className="flex items-center text-gray-600 hover:text-primary transition-colors">
           <ArrowLeft size={20} className="mr-2" />
           Back to Document
         </Link>
