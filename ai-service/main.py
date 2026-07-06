@@ -1,13 +1,10 @@
 import os
 import traceback
 
-import sentry_sdk
 import services.cloudinary_service  # noqa: F401 — initializes Cloudinary on startup
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sentry_sdk.integrations.fastapi import FastApiIntegration
-from sentry_sdk.integrations.starlette import StarletteIntegration
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -15,14 +12,6 @@ from middleware.rate_limiter import limiter
 from routers import auth, company, documents, admin, clients, catalog
 
 load_dotenv()
-
-if os.getenv("SENTRY_DSN"):
-    sentry_sdk.init(
-        dsn=os.getenv("SENTRY_DSN"),
-        environment=os.getenv("ENVIRONMENT", "production"),
-        traces_sample_rate=0.2,
-        integrations=[StarletteIntegration(), FastApiIntegration()],
-    )
 
 if not os.getenv("JWT_SECRET"):
     raise RuntimeError("FATAL: JWT_SECRET is not defined in .env")
