@@ -28,6 +28,7 @@ import {
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { Form16Renderer, GSTInvoiceRenderer, SalarySlipRenderer } from '../components/SpecialDocumentRenderer';
 
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
@@ -547,6 +548,20 @@ const DocumentPreview = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-10">
         <div className="lg:col-span-3">
+          {/* Special document types get their own renderer */}
+          {document?.type === 'form_16' ? (
+            <div className="bg-white shadow-2xl border border-gray-100 overflow-auto">
+              <Form16Renderer data={tempDoc?.data} company={company} document={tempDoc} />
+            </div>
+          ) : document?.type === 'gst_invoice' ? (
+            <div className="bg-white shadow-2xl border border-gray-100 overflow-auto">
+              <GSTInvoiceRenderer data={tempDoc?.data} company={company} document={tempDoc} />
+            </div>
+          ) : document?.type === 'salary_slip' ? (
+            <div className="bg-white shadow-2xl border border-gray-100 overflow-auto">
+              <SalarySlipRenderer data={tempDoc?.data} company={company} document={tempDoc} />
+            </div>
+          ) : (
           <div className="bg-white shadow-2xl border border-gray-100 min-h-[1000px] relative overflow-hidden">
             <div className="flex justify-between items-start p-10 mb-12" style={{ backgroundColor: brandColor }}>
                <div>
@@ -778,6 +793,7 @@ const DocumentPreview = () => {
                </div>
             </div>
           </div>
+          )}
         </div>
 
         <div className={`lg:col-span-1 space-y-8 ${showMobileSidebar ? 'block' : 'hidden lg:block'}`}>

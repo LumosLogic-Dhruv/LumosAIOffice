@@ -191,6 +191,47 @@ async def send_team_invite_email(
     )
 
 
+async def send_member_credentials_email(
+    to_email: str,
+    name: str,
+    temp_password: str,
+    company_name: str,
+    login_url: str,
+    reset_url: str,
+) -> None:
+    body = f"""
+      <h2 style="color:#1a1a1a;font-size:20px;margin:0 0 12px;font-weight:900;">
+        You've been added to {company_name} on DocuFlow AI
+      </h2>
+      <p style="color:#555555;line-height:1.7;margin:0 0 20px;">
+        Hi {name}, your account has been created. Use the credentials below to sign in:
+      </p>
+      <div style="background:#f4f0f3;border:2px solid #714B67;border-radius:12px;padding:24px 28px;margin:0 0 28px;">
+        <p style="margin:0 0 10px;font-size:13px;color:#555;">
+          <span style="font-weight:700;color:#1a1a1a;display:inline-block;width:90px;">Email</span>
+          <code style="background:#fff;padding:3px 10px;border-radius:6px;font-size:13px;">{to_email}</code>
+        </p>
+        <p style="margin:0;font-size:13px;color:#555;">
+          <span style="font-weight:700;color:#1a1a1a;display:inline-block;width:90px;">Password</span>
+          <code style="background:#fff;padding:3px 10px;border-radius:6px;font-size:13px;letter-spacing:2px;">{temp_password}</code>
+        </p>
+      </div>
+      <a href="{login_url}"
+         style="display:inline-block;background:#714B67;color:#ffffff;text-decoration:none;
+                padding:14px 32px;border-radius:10px;font-weight:700;font-size:14px;margin-bottom:24px;">
+        Sign In to DocuFlow AI
+      </a>
+      <p style="color:#999999;font-size:13px;margin:0;line-height:1.6;">
+        We recommend changing your password after first login.<br>
+        <a href="{reset_url}" style="color:#714B67;">Reset password here</a> or update it from your profile settings.
+      </p>"""
+    await _send(
+        to_email,
+        f"Your DocuFlow AI account is ready — {company_name}",
+        _base_template("Account Created", body),
+    )
+
+
 async def send_password_reset_email(to_email: str, token: str) -> None:
     reset_url = f"{FRONTEND_URL}/reset-password?token={token}"
     body = f"""

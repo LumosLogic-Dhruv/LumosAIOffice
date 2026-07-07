@@ -85,6 +85,9 @@ const Team = () => {
   const [inviteEmail, setInviteEmail] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
 
+  const [addForm, setAddForm] = useState({ name: '', email: '', role: 'member' });
+  const [addingMember, setAddingMember] = useState(false);
+
   const isOwner = user?.role === 'admin';
 
   useEffect(() => {
@@ -182,6 +185,23 @@ const Team = () => {
       toast.error('Failed to send invite');
     } finally {
       setSendingInvite(false);
+    }
+  };
+
+  const handleAddMember = async () => {
+    if (!addForm.name.trim()) return toast.error('Enter the member\'s full name');
+    if (!addForm.email.trim()) return toast.error('Enter the member\'s email address');
+    setAddingMember(true);
+    try {
+      await api.post('/company/invite-direct', addForm);
+      toast.success(`Account created and credentials sent to ${addForm.email}`);
+      setAddForm({ name: '', email: '', role: 'member' });
+      fetchMembers();
+      localStorage.setItem('onboardingInviteSent', 'true');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Failed to add member');
+    } finally {
+      setAddingMember(false);
     }
   };
 
@@ -294,7 +314,7 @@ const Team = () => {
             <h3 className="font-bold text-gray-900 text-sm">Invite Team Members</h3>
           </div>
           <p className="text-xs text-gray-400 mb-4 leading-relaxed">
-            Share this invite link with your employees. Anyone with the link can join your workspace as a member.
+            Copy and share this link manually. To add a member and send them login credentials directly, use the card below.
           </p>
           {inviteCode ? (
             <div className="space-y-3">
@@ -322,28 +342,6 @@ const Team = () => {
               <p className="text-xs text-amber-600 font-medium">
                 Generating a new link invalidates the previous one.
               </p>
-              <div className="flex items-center gap-2 pt-1">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-                  <Mail size={13} className="text-gray-400 shrink-0" />
-                  <input
-                    type="email"
-                    placeholder="Send invite to email address"
-                    value={inviteEmail}
-                    onChange={e => setInviteEmail(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && sendInviteEmail()}
-                    className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none min-w-0"
-                  />
-                </div>
-                <button
-                  onClick={sendInviteEmail}
-                  disabled={sendingInvite || !inviteEmail.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50 whitespace-nowrap"
-                  style={{ backgroundColor: BRAND }}
-                >
-                  {sendingInvite ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
-                  Send
-                </button>
-              </div>
             </div>
           ) : (
             <button
@@ -356,6 +354,71 @@ const Team = () => {
               {generating ? 'Generating...' : 'Generate Invite Link'}
             </button>
           )}
+        </div>
+      )}
+
+      {isOwner && (
+        <div className="bg-white rounded-xl border border-gray-100 p-6 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-2 rounded-lg" style={{ backgroundColor: `${BRAND}15`, color: BRAND }}>
+              <Plus size={16} />
+            </div>
+            <h3 className="font-bold text-gray-900 text-sm">Add Member Directly</h3>
+          </div>
+          <p className="text-xs text-gray-400 mb-4 leading-relaxed">
+            Create an account for a team member and email them their login credentials. They can reset their password anytime.
+          </p>
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                <User size={13} className="text-gray-400 shrink-0" />
+                <input
+                  type="text"
+                  placeholder="Full name"
+                  value={addForm.name}
+                  onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))}
+                  className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none min-w-0"
+                />
+              </div>
+              <div className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                <Mail size={13} className="text-gray-400 shrink-0" />
+                <input
+                  type="email"
+                  placeholder="Email address"
+                  value={addForm.email}
+                  onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))}
+                  onKeyDown={e => e.key === 'Enter' && handleAddMember()}
+                  className="flex-1 bg-transparent text-xs text-gray-700 placeholder-gray-400 focus:outline-none min-w-0"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex gap-2">
+                {(['member', 'viewer'] as const).map(r => (
+                  <button
+                    key={r}
+                    onClick={() => setAddForm(f => ({ ...f, role: r }))}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border-2 transition-all capitalize"
+                    style={addForm.role === r
+                      ? { backgroundColor: BRAND, color: '#fff', borderColor: BRAND }
+                      : { backgroundColor: 'transparent', color: '#6b7280', borderColor: '#e5e7eb' }}
+                  >
+                    {r === 'viewer' ? <Eye size={11} /> : <User size={11} />}
+                    {r === 'member' ? 'Member' : 'Viewer'}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={handleAddMember}
+                disabled={addingMember || !addForm.name.trim() || !addForm.email.trim()}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all disabled:opacity-50 ml-auto"
+                style={{ backgroundColor: BRAND }}
+              >
+                {addingMember ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                {addingMember ? 'Creating...' : 'Create & Send Credentials'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

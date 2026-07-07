@@ -1,17 +1,20 @@
 import io
 import os
 import secrets
+import string
 from typing import Any, Dict, Optional
 
 import cloudinary.uploader
 from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
+from passlib.context import CryptContext
 from pydantic import BaseModel
 
 import convex_client
 from middleware.auth import get_current_user
-from services.email_service import send_team_invite_email
+from services.email_service import send_team_invite_email, send_member_credentials_email
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 router = APIRouter(prefix="/api/company", tags=["company"])
 
@@ -139,6 +142,60 @@ async def generate_invite(
             pass  # Don't fail invite generation if email fails
 
     return {"inviteCode": invite_code}
+
+
+class DirectInviteRequest(BaseModel):
+    name: str
+    email: str
+    role: str = "member"
+
+
+@router.post("/invite-direct")
+async def invite_with_credentials(
+    data: DirectInviteRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the owner can add members")
+    if data.role not in ("member", "viewer"):
+        raise HTTPException(status_code=400, detail="Role must be 'member' or 'viewer'")
+
+    existing = await convex_client.query("users:getByEmail", {"email": data.email})
+    if existing:
+        raise HTTPException(status_code=400, detail="An account with this email already exists.")
+
+    # Generate a readable temp password: 4 words of letters + 4 digits
+    temp_password = (
+        ''.join(secrets.choice(string.ascii_letters) for _ in range(8))
+        + ''.join(secrets.choice(string.digits) for _ in range(4))
+    )
+    hashed = _pwd_context.hash(temp_password)
+
+    company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
+    company_name = (company or {}).get("name", "your team")
+
+    user_id = await convex_client.mutation("users:create", {
+        "name": data.name,
+        "email": data.email,
+        "password": hashed,
+        "role": data.role,
+        "companyId": current_user["companyId"],
+        "emailVerified": True,
+    })
+
+    try:
+        await send_member_credentials_email(
+            to_email=data.email,
+            name=data.name,
+            temp_password=temp_password,
+            company_name=company_name,
+            login_url=f"{FRONTEND_URL}/login",
+            reset_url=f"{FRONTEND_URL}/forgot-password",
+        )
+    except Exception:
+        pass  # Account is created — email failure is non-fatal
+
+    return {"success": True, "message": f"Account created and credentials sent to {data.email}"}
 
 
 @router.delete("/members/{user_id}")

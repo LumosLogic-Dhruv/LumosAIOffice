@@ -35,9 +35,13 @@ export const create = mutation({
     password: v.string(),
     role: v.string(),
     companyId: v.id("companies"),
+    emailVerified: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    return await ctx.db.insert("users", args);
+    return await ctx.db.insert("users", {
+      ...args,
+      emailVerified: args.emailVerified ?? false,
+    });
   },
 });
 
