@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import api from '../services/api';
-import toast from 'react-hot-toast';
-import { useAuth } from '../context/AuthContext';
+import { Document as PdfDocument, Page as PdfPage, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
 import {
   Download,
   History,
@@ -25,6 +25,14 @@ import {
   ChevronDown,
   Clock,
 } from 'lucide-react';
+import api from '../services/api';
+import toast from 'react-hot-toast';
+import { useAuth } from '../context/AuthContext';
+
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; border: string }> = {
   draft:    { label: 'Draft',    color: '#6b7280', bg: '#f3f4f6', border: '#d1d5db' },
@@ -67,8 +75,12 @@ const DocumentPreview = () => {
   const sharePopoverRef = useRef<HTMLDivElement>(null);
 
   const [showPdfModal, setShowPdfModal] = useState(false);
+  const [numPages, setNumPages] = useState<number>(0);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pdfWidth, setPdfWidth] = useState<number>(800);
   const [updatingPerm, setUpdatingPerm] = useState(false);
   const [togglingESign, setTogglingESign] = useState(false);
+  const [showMobileSidebar, setShowMobileSidebar] = useState(false);
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
@@ -81,6 +93,7 @@ const DocumentPreview = () => {
   const statusDropdownRef = useRef<HTMLDivElement>(null);
 
   const isOwner = user?.role === 'admin';
+  const isViewer = user?.role === 'viewer';
 
   useEffect(() => {
     fetchData();
@@ -341,7 +354,7 @@ const DocumentPreview = () => {
             <span>History</span>
           </Link>
 
-          {!isManualEdit ? (
+          {!isViewer && !isManualEdit ? (
             <button
               onClick={() => setIsManualEdit(true)}
               className="flex items-center space-x-2 px-6 py-3 rounded-2xl font-black text-xs uppercase tracking-widest border-2 transition-all"
@@ -350,7 +363,7 @@ const DocumentPreview = () => {
               <Edit3 size={18} />
               <span>Manual Edit</span>
             </button>
-          ) : (
+          ) : !isViewer && isManualEdit ? (
             <div className="flex items-center gap-2">
               {autoSaveStatus === 'saving' && (
                 <span className="text-xs text-gray-400 font-bold flex items-center gap-1">
@@ -390,7 +403,7 @@ const DocumentPreview = () => {
                 <X size={18} />
               </button>
             </div>
-          )}
+          ) : null}
 
           <div className="relative" ref={sharePopoverRef}>
             <button
@@ -520,7 +533,19 @@ const DocumentPreview = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-10">
+      {/* Mobile sidebar toggle */}
+      <div className="lg:hidden flex justify-end mb-2">
+        <button
+          onClick={() => setShowMobileSidebar((v) => !v)}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-black border-2 transition-all"
+          style={{ borderColor: brandColor, color: brandColor }}
+        >
+          <Sparkles size={14} />
+          {showMobileSidebar ? 'Hide Tools' : 'Show Tools'}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-10">
         <div className="lg:col-span-3">
           <div className="bg-white shadow-2xl border border-gray-100 min-h-[1000px] relative overflow-hidden">
             <div className="flex justify-between items-start p-10 mb-12" style={{ backgroundColor: brandColor }}>
@@ -542,7 +567,7 @@ const DocumentPreview = () => {
                </div>
             </div>
 
-            <div className="px-16 space-y-12">
+            <div className="px-4 sm:px-8 md:px-16 space-y-8 md:space-y-12">
                <div className="flex justify-between items-end">
                   <div className="flex-1 mr-8">
                     {isManualEdit ? (
@@ -552,7 +577,7 @@ const DocumentPreview = () => {
                         onChange={(e) => setTempDoc({ ...tempDoc, title: e.target.value })}
                       />
                     ) : (
-                      <h1 className="text-5xl font-black text-gray-900 tracking-tighter mb-2">{tempDoc.title}</h1>
+                      <h1 className="text-3xl sm:text-5xl font-black text-gray-900 tracking-tighter mb-2">{tempDoc.title}</h1>
                     )}
 
                     <div className="flex items-center gap-2">
@@ -639,14 +664,14 @@ const DocumentPreview = () => {
                ))}
 
                {tempDoc.data.tables?.map((table: any, idx: number) => (
-                 <div key={idx} className="space-y-6">
-                   <h3 className="text-2xl font-black text-gray-900">{table.title}</h3>
-                   <div className="overflow-hidden rounded-3xl border-2 border-gray-100">
+                 <div key={idx} className="space-y-4">
+                   <h3 className="text-xl sm:text-2xl font-black text-gray-900">{table.title}</h3>
+                   <div className="overflow-x-auto overflow-hidden rounded-3xl border-2 border-gray-100">
                      <table className="w-full text-left border-collapse">
                        <thead>
                          <tr style={{ backgroundColor: brandColor }}>
                            {(Array.isArray(table.headers) ? table.headers : Object.values(table.headers || {})).map((h: any, i: number) => (
-                             <th key={i} className="p-5 text-white font-black uppercase text-xs tracking-widest">{h}</th>
+                             <th key={i} className="p-3 sm:p-5 text-white font-black uppercase text-xs tracking-widest whitespace-nowrap">{h}</th>
                            ))}
                          </tr>
                        </thead>
@@ -654,7 +679,7 @@ const DocumentPreview = () => {
                          {(Array.isArray(table.rows) ? table.rows : []).map((row: any, i: number) => (
                            <tr key={i} className="hover:bg-gray-50/50">
                              {(Array.isArray(row) ? row : Object.values(row || {})).map((cell: any, j: number) => (
-                               <td key={j} className="p-5">
+                               <td key={j} className="p-3 sm:p-5">
                                  {isManualEdit ? (
                                    <input
                                      className="w-full bg-transparent font-bold text-gray-700 outline-none"
@@ -723,7 +748,7 @@ const DocumentPreview = () => {
                )}
             </div>
 
-            <div className="mt-32 pt-10 border-t border-gray-100 flex justify-between items-end px-16 pb-16">
+            <div className="mt-16 sm:mt-32 pt-10 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-8 px-4 sm:px-8 md:px-16 pb-8 sm:pb-16">
                <div className="space-y-4">
                   <div className="space-y-1">
                      <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Authorized Signatory</p>
@@ -755,7 +780,7 @@ const DocumentPreview = () => {
           </div>
         </div>
 
-        <div className="lg:col-span-1 space-y-8">
+        <div className={`lg:col-span-1 space-y-8 ${showMobileSidebar ? 'block' : 'hidden lg:block'}`}>
           <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
             <div className="flex items-center space-x-3 mb-4">
               <div className="p-2 bg-gray-100 rounded-xl">
@@ -806,6 +831,12 @@ const DocumentPreview = () => {
             )}
           </div>
 
+          {isViewer ? (
+            <div className="bg-gray-50 border border-gray-100 rounded-[40px] p-6 text-center space-y-2">
+              <Eye size={20} className="text-gray-300 mx-auto" />
+              <p className="text-xs font-semibold text-gray-400">View-only access. Contact the owner to request edit permissions.</p>
+            </div>
+          ) : (
           <div className="bg-white p-8 rounded-[40px] shadow-xl border border-gray-100">
             <div className="flex items-center space-x-3 text-primary mb-6">
               <div className="p-2 bg-primary/10 rounded-xl">
@@ -854,6 +885,7 @@ const DocumentPreview = () => {
               </p>
             )}
           </div>
+          )}
 
           {isOwner && (
             <div className="bg-white p-6 rounded-[40px] shadow-xl border border-gray-100">
@@ -939,9 +971,28 @@ const DocumentPreview = () => {
 
       {showPdfModal && document.pdfUrl && (
         <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
-          <div className="flex items-center justify-between px-6 py-3 bg-gray-900 shrink-0">
-            <p className="text-white font-bold text-sm truncate max-w-md">{document.title}</p>
-            <div className="flex items-center gap-4">
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 bg-gray-900 shrink-0 flex-wrap gap-2">
+            <p className="text-white font-bold text-sm truncate max-w-xs sm:max-w-md">{document.title}</p>
+            <div className="flex items-center gap-3 sm:gap-4">
+              {numPages > 1 && (
+                <div className="flex items-center gap-1.5 text-white/60 text-xs font-semibold">
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-40 transition-colors"
+                  >
+                    ‹
+                  </button>
+                  <span>{currentPage} / {numPages}</span>
+                  <button
+                    onClick={() => setCurrentPage((p) => Math.min(numPages, p + 1))}
+                    disabled={currentPage >= numPages}
+                    className="px-2 py-1 rounded hover:bg-white/10 disabled:opacity-40 transition-colors"
+                  >
+                    ›
+                  </button>
+                </div>
+              )}
               <a
                 href={document.pdfUrl}
                 download
@@ -958,11 +1009,31 @@ const DocumentPreview = () => {
               </button>
             </div>
           </div>
-          <iframe
-            src={document.pdfUrl}
-            className="flex-1 w-full border-0"
-            title="PDF Preview"
-          />
+          <div
+            className="flex-1 overflow-auto flex items-start justify-center py-4 px-2"
+            ref={(el) => { if (el) setPdfWidth(Math.min(el.clientWidth - 24, 960)); }}
+          >
+            <PdfDocument
+              file={document.pdfUrl}
+              onLoadSuccess={({ numPages: n }) => { setNumPages(n); setCurrentPage(1); }}
+              loading={<p className="text-white/50 text-sm mt-16">Loading PDF...</p>}
+              error={
+                <div className="text-center mt-16 space-y-3">
+                  <p className="text-white/60 text-sm">Could not render PDF inline.</p>
+                  <a href={document.pdfUrl} download className="text-white underline text-sm font-semibold">
+                    Download instead
+                  </a>
+                </div>
+              }
+            >
+              <PdfPage
+                pageNumber={currentPage}
+                width={pdfWidth}
+                renderTextLayer
+                renderAnnotationLayer
+              />
+            </PdfDocument>
+          </div>
         </div>
       )}
     </div>

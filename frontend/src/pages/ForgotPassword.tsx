@@ -1,25 +1,33 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { Mail, ArrowRight, CheckCircle } from 'lucide-react';
 import Logo from '../components/Logo';
 
-const ForgotPassword = () => {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+const schema = z.object({
+  email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+});
+type FormData = z.infer<typeof schema>;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+const ForgotPassword = () => {
+  const [sent, setSent] = useState(false);
+  const [sentEmail, setSentEmail] = useState('');
+
+  const { register, handleSubmit, getValues, formState: { errors, isSubmitting } } = useForm<FormData>({
+    resolver: zodResolver(schema),
+  });
+
+  const onSubmit = async (data: FormData) => {
     try {
-      await api.post('/auth/forgot-password', { email });
+      await api.post('/auth/forgot-password', { email: data.email });
+      setSentEmail(data.email);
       setSent(true);
     } catch {
       toast.error('Something went wrong. Please try again.');
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -54,7 +62,7 @@ const ForgotPassword = () => {
                 </div>
                 <h2 className="text-2xl font-black text-gray-900 tracking-tight">Check your inbox</h2>
                 <p className="text-gray-500 text-sm leading-relaxed">
-                  If an account exists for <strong>{email}</strong>, we've sent a password reset link.
+                  If an account exists for <strong>{sentEmail}</strong>, we've sent a password reset link.
                   The link expires in <strong>1 hour</strong>.
                 </p>
                 <p className="text-gray-400 text-xs mt-2">
@@ -77,7 +85,7 @@ const ForgotPassword = () => {
                   </p>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-5">
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
                   <div className="space-y-1.5">
                     <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                       <Mail size={12} /> Email Address
@@ -85,20 +93,25 @@ const ForgotPassword = () => {
                     <input
                       type="email"
                       placeholder="you@company.com"
-                      className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
+                      className={`w-full px-4 py-3 border rounded-xl focus:ring-2 outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm ${
+                        errors.email
+                          ? 'border-red-400 focus:ring-red-200 focus:border-red-400'
+                          : 'border-gray-200 focus:ring-[#714B67]/20 focus:border-[#714B67]'
+                      }`}
+                      {...register('email')}
                     />
+                    {errors.email && (
+                      <p className="text-xs text-red-500 font-semibold">{errors.email.message}</p>
+                    )}
                   </div>
 
                   <button
                     type="submit"
-                    disabled={loading}
+                    disabled={isSubmitting}
                     style={{ backgroundColor: '#714B67' }}
                     className="w-full text-white py-3 rounded-xl font-black text-sm hover:opacity-90 transition-all shadow-lg mt-2 flex items-center justify-center gap-2 disabled:opacity-60 group"
                   >
-                    {loading ? (
+                    {isSubmitting ? (
                       <span>Sending...</span>
                     ) : (
                       <>

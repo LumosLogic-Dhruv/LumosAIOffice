@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { z } from 'zod';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -7,6 +8,24 @@ import {
   Upload, Loader2, Save, Palette, Lock, Eye, EyeOff,
   ShieldAlert, Trash2, FileText,
 } from 'lucide-react';
+
+const companySchema = z.object({
+  name: z.string().min(1, 'Company name is required'),
+  email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
+  website: z.string().refine((v) => !v || /^https?:\/\/.+/.test(v), { message: 'Enter a valid URL (e.g. https://example.com)' }),
+  phone: z.string().optional(),
+});
+
+const pwSchema = z
+  .object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z.string().min(8, 'New password must be at least 8 characters'),
+    confirmPassword: z.string().min(1, 'Please confirm your new password'),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+  });
 
 const BRAND = '#714B67';
 
@@ -47,6 +66,8 @@ const CompanyProfile = () => {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showPw, setShowPw] = useState({ current: false, new: false, confirm: false });
   const [changingPw, setChangingPw] = useState(false);
+  const [pwErrors, setPwErrors] = useState<Record<string, string>>({});
+  const [companyErrors, setCompanyErrors] = useState<Record<string, string>>({});
 
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -67,6 +88,19 @@ const CompanyProfile = () => {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
+    const result = companySchema.safeParse({
+      name: profile?.name || '',
+      email: profile?.email || '',
+      website: profile?.website || '',
+      phone: profile?.phone || '',
+    });
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) errs[issue.path[0] as string] = issue.message;
+      setCompanyErrors(errs);
+      return;
+    }
+    setCompanyErrors({});
     setUpdating(true);
     try {
       await api.put('/company/update', profile);
@@ -96,8 +130,14 @@ const CompanyProfile = () => {
 
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pwForm.newPassword !== pwForm.confirmPassword) { toast.error('New passwords do not match.'); return; }
-    if (pwForm.newPassword.length < 8) { toast.error('New password must be at least 8 characters.'); return; }
+    const result = pwSchema.safeParse(pwForm);
+    if (!result.success) {
+      const errs: Record<string, string> = {};
+      for (const issue of result.error.issues) errs[issue.path[0] as string] = issue.message;
+      setPwErrors(errs);
+      return;
+    }
+    setPwErrors({});
     setChangingPw(true);
     try {
       await api.post('/auth/change-password', { currentPassword: pwForm.currentPassword, newPassword: pwForm.newPassword });
@@ -176,9 +216,13 @@ const CompanyProfile = () => {
             ].map(({ icon: Icon, label, key, type }) => (
               <div key={key} className="space-y-1.5">
                 <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5"><Icon size={12} />{label}</label>
-                <input type={type} className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 text-gray-700"
-                  onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''}
-                  value={profile?.[key] || ''} onChange={(e) => setProfile({ ...profile, [key]: e.target.value })} />
+                <input type={type}
+                  className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition-all bg-gray-50 text-gray-700 ${companyErrors[key] ? 'border-red-400' : 'border-gray-200'}`}
+                  onFocus={e => { if (!companyErrors[key]) e.target.style.borderColor = BRAND; }}
+                  onBlur={e => { if (!companyErrors[key]) e.target.style.borderColor = ''; }}
+                  value={profile?.[key] || ''}
+                  onChange={(e) => { setProfile({ ...profile, [key]: e.target.value }); if (companyErrors[key]) setCompanyErrors(p => ({ ...p, [key]: '' })); }} />
+                {companyErrors[key] && <p className="text-xs text-red-500 font-semibold">{companyErrors[key]}</p>}
               </div>
             ))}
 
@@ -246,21 +290,20 @@ const CompanyProfile = () => {
               <label className="text-xs font-semibold text-gray-500">{label}</label>
               <div className="relative">
                 <input type={show ? 'text' : 'password'} value={(pwForm as any)[key]}
-                  onChange={e => setPwForm(f => ({ ...f, [key]: e.target.value }))}
-                  className="w-full px-3 py-2 pr-10 text-sm border border-gray-200 rounded-lg outline-none bg-gray-50 text-gray-700 transition-all"
-                  onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''}
-                  placeholder="••••••••" required />
+                  onChange={e => { setPwForm(f => ({ ...f, [key]: e.target.value })); if (pwErrors[key]) setPwErrors(p => ({ ...p, [key]: '' })); }}
+                  className={`w-full px-3 py-2 pr-10 text-sm border rounded-lg outline-none bg-gray-50 text-gray-700 transition-all ${pwErrors[key] ? 'border-red-400' : 'border-gray-200'}`}
+                  onFocus={e => { if (!pwErrors[key]) e.target.style.borderColor = BRAND; }}
+                  onBlur={e => { if (!pwErrors[key]) e.target.style.borderColor = ''; }}
+                  placeholder="••••••••" />
                 <button type="button" onClick={toggle} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                   {show ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-              {key === 'newPassword' && pwForm.newPassword.length > 0 && (
+              {pwErrors[key] && <p className="text-xs text-red-500 font-semibold">{pwErrors[key]}</p>}
+              {key === 'newPassword' && !pwErrors[key] && pwForm.newPassword.length > 0 && (
                 <div className="flex gap-1 mt-1">
                   {[1, 2, 3].map(l => <div key={l} className="h-1 flex-1 rounded-full transition-all" style={{ backgroundColor: pwStrength >= l ? strengthColor : '#e5e7eb' }} />)}
                 </div>
-              )}
-              {key === 'confirmPassword' && pwForm.confirmPassword && pwForm.newPassword !== pwForm.confirmPassword && (
-                <p className="text-xs text-red-500">Passwords do not match</p>
               )}
             </div>
           ))}

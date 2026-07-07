@@ -2,8 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Sparkles, FileText, Send, Loader2, ChevronDown, Users, LayoutTemplate } from 'lucide-react';
+import { Sparkles, FileText, Send, Loader2, ChevronDown, Users, LayoutTemplate, Eye } from 'lucide-react';
 import DocumentTemplatePreview from '../components/DocumentTemplatePreview';
+import { useAuth } from '../context/AuthContext';
 
 const BRAND = '#714B67';
 
@@ -94,6 +95,7 @@ const DOCUMENT_TEMPLATES: Record<string, { description: string; sections: string
 };
 
 const CreateDocument = () => {
+  const { user } = useAuth();
   const [mode, setMode] = useState<'ai' | 'manual'>('ai');
   const [type, setType] = useState('quotation');
   const [rawText, setRawText] = useState('');
@@ -103,6 +105,21 @@ const CreateDocument = () => {
   const [clients, setClients] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any>(null);
   const navigate = useNavigate();
+
+  if (user?.role === 'viewer') {
+    return (
+      <div className="flex flex-col items-center justify-center h-full py-24 text-center space-y-4">
+        <div className="p-4 bg-blue-50 rounded-2xl">
+          <Eye size={32} className="text-blue-400 mx-auto" />
+        </div>
+        <h2 className="text-lg font-black text-gray-800">View-Only Access</h2>
+        <p className="text-sm text-gray-400 max-w-xs leading-relaxed">
+          Your account is set to viewer mode. You can view documents but cannot create new ones.
+          Contact your workspace owner to request member access.
+        </p>
+      </div>
+    );
+  }
 
   useEffect(() => {
     api.get('/clients').then(res => setClients(res.data)).catch(() => {});

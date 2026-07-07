@@ -152,3 +152,27 @@ async def remove_member(user_id: str, current_user: dict = Depends(get_current_u
         raise HTTPException(status_code=400, detail="Cannot remove the company owner")
     await convex_client.mutation("users:deleteById", {"id": user_id})
     return {"success": True}
+
+
+class UpdateRoleRequest(BaseModel):
+    role: str
+
+
+@router.put("/members/{user_id}/role")
+async def update_member_role(
+    user_id: str,
+    req: UpdateRoleRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    if current_user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Only the company owner can change member roles")
+    if req.role not in ("member", "viewer"):
+        raise HTTPException(status_code=400, detail="Role must be 'member' or 'viewer'")
+    target = await convex_client.query("users:getById", {"id": user_id})
+    if not target or target.get("companyId") != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Member not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot change the owner's role")
+    # Requires convex/users.ts to export: updateRole({ id, role })
+    await convex_client.mutation("users:updateRole", {"id": user_id, "role": req.role})
+    return {"success": True, "role": req.role}

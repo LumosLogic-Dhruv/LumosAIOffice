@@ -80,6 +80,7 @@ const Team = () => {
 
   const [removeTarget, setRemoveTarget] = useState<Member | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [updatingRole, setUpdatingRole] = useState<string | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
@@ -181,6 +182,19 @@ const Team = () => {
       toast.error('Failed to send invite');
     } finally {
       setSendingInvite(false);
+    }
+  };
+
+  const handleRoleChange = async (memberId: string, newRole: 'member' | 'viewer') => {
+    setUpdatingRole(memberId);
+    try {
+      await api.put(`/company/members/${memberId}/role`, { role: newRole });
+      setMembers(prev => prev.map(m => m._id === memberId ? { ...m, role: newRole } : m));
+      toast.success(`Role updated to ${newRole}`);
+    } catch {
+      toast.error('Failed to update role');
+    } finally {
+      setUpdatingRole(null);
     }
   };
 
@@ -382,10 +396,16 @@ const Team = () => {
                   <td className="px-5 py-3">
                     <span
                       className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs font-semibold"
-                      style={m.role === 'admin' ? { backgroundColor: BRAND, color: '#fff' } : { backgroundColor: '#f3f4f6', color: '#6b7280' }}
+                      style={
+                        m.role === 'admin'
+                          ? { backgroundColor: BRAND, color: '#fff' }
+                          : m.role === 'viewer'
+                          ? { backgroundColor: '#eff6ff', color: '#2563eb' }
+                          : { backgroundColor: '#f3f4f6', color: '#6b7280' }
+                      }
                     >
-                      {m.role === 'admin' ? <Shield size={10} /> : <User size={10} />}
-                      {m.role === 'admin' ? 'Owner' : 'Member'}
+                      {m.role === 'admin' ? <Shield size={10} /> : m.role === 'viewer' ? <Eye size={10} /> : <User size={10} />}
+                      {m.role === 'admin' ? 'Owner' : m.role === 'viewer' ? 'Viewer' : 'Member'}
                     </span>
                   </td>
                   <td className="px-5 py-3 text-gray-400 text-xs">
@@ -394,13 +414,26 @@ const Team = () => {
                   {isOwner && (
                     <td className="px-5 py-3 text-right">
                       {m._id !== user?._id && m.role !== 'admin' && (
-                        <button
-                          onClick={() => setRemoveTarget(m)}
-                          className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
-                          title="Remove member"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {updatingRole === m._id ? (
+                            <Loader2 size={13} className="animate-spin text-gray-400" />
+                          ) : (
+                            <button
+                              onClick={() => handleRoleChange(m._id, m.role === 'viewer' ? 'member' : 'viewer')}
+                              className="px-2 py-1 rounded-md text-xs font-semibold border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors"
+                              title={m.role === 'viewer' ? 'Promote to Member' : 'Set as Viewer'}
+                            >
+                              {m.role === 'viewer' ? 'Make Member' : 'Make Viewer'}
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setRemoveTarget(m)}
+                            className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+                            title="Remove member"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
                       )}
                     </td>
                   )}

@@ -61,7 +61,7 @@ const Register = () => {
         payload.companyName = 'invited';
       }
       const response = await api.post('/auth/register', payload);
-      login(response.data.token, response.data);
+      login(response.data.token, response.data, response.data.csrfToken);
       toast.success(isInvite ? 'Joined team successfully!' : 'Account created successfully!');
       navigate('/dashboard');
     } catch (error: any) {

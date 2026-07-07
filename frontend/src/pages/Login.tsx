@@ -32,7 +32,7 @@ const Login = () => {
     setLoading(true);
     try {
       const response = await api.post('/auth/login', data);
-      login(response.data.token, response.data);
+      login(response.data.token, response.data, response.data.csrfToken);
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error: any) {

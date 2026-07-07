@@ -64,3 +64,11 @@ export const updatePassword = mutation({
     return { success: true };
   },
 });
+
+export const updateRole = mutation({
+  args: { id: v.id("users"), role: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, { role: args.role });
+    return { success: true };
+  },
+});

@@ -147,6 +147,8 @@ class CreateDocumentRequest(BaseModel):
 
 @router.post("", status_code=201)
 async def create_document(req: CreateDocumentRequest, current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot create documents")
     doc_data = req.data
     if not doc_data.get("terms"):
         company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
@@ -170,6 +172,8 @@ class ProcessAIRequest(BaseModel):
 @router.post("/process-ai")
 @limiter.limit("20/hour")
 async def process_ai(request: Request, req: ProcessAIRequest, current_user: dict = Depends(get_current_user)):
+    if current_user.get("role") == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot create documents")
     company = await convex_client.query("companies:getById", {"id": current_user["companyId"]})
     if not company:
         raise HTTPException(status_code=404, detail="Company profile not found.")
@@ -242,6 +246,8 @@ async def update_document(
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    if current_user.get("role") == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot edit documents")
     if current_user.get("role") != "admin":
         edit_perm = (doc.get("data") or {}).get("editPermission", "all")
         if edit_perm == "owner_only":
@@ -277,6 +283,8 @@ async def edit_ai(request: Request, doc_id: str, req: EditAIRequest, background_
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    if current_user.get("role") == "viewer":
+        raise HTTPException(status_code=403, detail="Viewers cannot edit documents")
     if current_user.get("role") != "admin":
         edit_perm = (doc.get("data") or {}).get("editPermission", "all")
         if edit_perm == "owner_only":
