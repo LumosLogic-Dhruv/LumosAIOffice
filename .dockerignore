@@ -2,7 +2,6 @@
 .gitignore
 .claude
 .kilo
-.firebase
 .github
 **/node_modules
 **/dist

@@ -92,8 +92,8 @@ These are ranked roughly by impact and feasibility for a document-automation Saa
 
 ## Architecture Notes
 
-- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS v3 → Firebase Hosting (`aidocs-lumoslogic`)
-- **Backend**: Python FastAPI → Google Cloud Run (`docflowai`, `asia-south1`)
+- **Frontend**: React 18 + TypeScript + Vite + Tailwind CSS v3 → served by Nginx on the Hostinger VPS
+- **Backend**: Python FastAPI → Docker container on the Hostinger VPS (proxied via Nginx behind Traefik)
 - **Database**: Convex (`stoic-weasel-322`, eu-west-1)
 - **File Storage**: Cloudinary
 - **AI**: Google Gemini 2.5 Flash
