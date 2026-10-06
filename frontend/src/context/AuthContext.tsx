@@ -30,9 +30,8 @@ const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keypress', 'scroll', 'touchs
 const ACCESS_TOKEN_TTL_MS = 60 * 60 * 1000;
 const REFRESH_BEFORE_MS = 5 * 60 * 1000;
 
-const CLOUD_RUN_URL = 'https://docflowai-874559728801.asia-south1.run.app';
 const base = (import.meta as any).env.PROD
-  ? CLOUD_RUN_URL
+  ? '/api'
   : ((import.meta as any).env.VITE_API_URL || 'http://localhost:5000');
 const API_BASE = base.endsWith('/api') ? base : `${base.replace(/\/$/, '')}/api`;
 

@@ -1,0 +1,13 @@
+.git
+.gitignore
+.claude
+.kilo
+.firebase
+.github
+**/node_modules
+**/dist
+**/venv
+**/__pycache__
+**/*.pyc
+*.log
+*.md

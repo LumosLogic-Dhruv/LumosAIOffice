@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = 'https://docflowai-874559728801.asia-south1.run.app/api';
+const BASE_URL = '/api';
 
 const api = axios.create({ baseURL: BASE_URL });
 

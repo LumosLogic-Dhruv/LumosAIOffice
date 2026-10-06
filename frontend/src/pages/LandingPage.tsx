@@ -146,7 +146,7 @@ const LandingPage = () => {
                 <div className="w-2.5 h-2.5 rounded-full bg-green-400" />
               </div>
               <div className="flex-1 mx-4 h-6 bg-white rounded-md border border-gray-200 flex items-center px-3">
-                <span className="text-xs text-gray-400">aidocs-lumoslogic.web.app/dashboard</span>
+                <span className="text-xs text-gray-400">aidocs.lumoslogic.com/dashboard</span>
               </div>
             </div>
             {/* App UI mockup */}

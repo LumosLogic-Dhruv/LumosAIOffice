@@ -18,7 +18,7 @@ const Guard = ({ children }: { children: React.ReactNode }) => {
 function App() {
   return (
     <AuthProvider>
-      <Router>
+      <Router basename="/platform">
         <Toaster position="top-right" toastOptions={{ style: { fontSize: '13px' } }} />
         <Routes>
           <Route path="/login" element={<Login />} />

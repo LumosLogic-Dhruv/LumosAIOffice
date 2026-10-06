@@ -27,3 +27,14 @@ yarn-error.log*
 # Legacy / unused files
 ai-service/database.py
 backend/
+
+# Local tooling / agent state
+.claude/
+.kilo/
+
+# Deployment / certificates (generated on the VPS)
+certbot/
+
+.env.production
+.env
+
