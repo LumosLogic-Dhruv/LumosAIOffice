@@ -76,3 +76,20 @@ export const updateRole = mutation({
     return { success: true };
   },
 });
+
+export const updateEmail = mutation({
+  args: { id: v.id("users"), email: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.id);
+    if (!user) throw new Error("User not found");
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+    if (existing && existing._id !== args.id) {
+      throw new Error("An account with this email already exists.");
+    }
+    await ctx.db.patch(args.id, { email: args.email });
+    return { success: true };
+  },
+});

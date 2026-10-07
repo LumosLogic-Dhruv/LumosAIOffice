@@ -202,9 +202,9 @@ const Form16Preview = () => (
 
 // ── GST Invoice preview ──────────────────────────────────────────────────────
 
-const GSTInvoicePreview = () => (
-  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '8px', background: 'white', border: '1px solid #ccc' }}>
-    <div style={{ background: '#1a1a2e', color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+const GSTInvoicePreview = ({ color }: { color: string }) => (
+  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+    <div style={{ background: color, color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div>
         <div style={{ fontWeight: 900, fontSize: '13px' }}>Your Company</div>
         <div style={{ fontSize: '7px', opacity: 0.7, marginTop: '2px' }}>GSTIN: 27ABCDE1234F1Z5</div>
@@ -240,7 +240,7 @@ const GSTInvoicePreview = () => (
       <thead>
         <tr>
           {['#', 'Description', 'HSN/SAC', 'Qty', 'Rate', 'Taxable', 'CGST 9%', 'SGST 9%', 'Total'].map(h => (
-            <th key={h} style={{ background: '#1a1a2e', color: 'white', padding: '4px 5px', textAlign: 'center', fontSize: '6px', fontWeight: 700 }}>{h}</th>
+            <th key={h} style={{ background: color, color: 'white', padding: '4px 5px', textAlign: 'center', fontSize: '6px', fontWeight: 700 }}>{h}</th>
           ))}
         </tr>
       </thead>
@@ -270,13 +270,13 @@ const GSTInvoicePreview = () => (
       </div>
       <div style={{ width: '160px', fontSize: '7.5px' }}>
         {[['Total Taxable', '₹1,50,000'], ['Total CGST', '₹13,500'], ['Total SGST', '₹13,500'], ['Grand Total', '₹1,77,000']].map(([k, v], i) => (
-          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f0f0f0', fontWeight: i === 3 ? 900 : 400, fontSize: i === 3 ? '9px' : '7.5px', color: i === 3 ? '#1a1a2e' : 'inherit' }}>
+          <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '2px 0', borderBottom: '1px solid #f0f0f0', fontWeight: i === 3 ? 900 : 400, fontSize: i === 3 ? '9px' : '7.5px', color: i === 3 ? color : 'inherit' }}>
             <span>{k}</span><span>{v}</span>
           </div>
         ))}
       </div>
     </div>
-    <div style={{ padding: '5px 14px', background: '#f9f9f9', fontSize: '7px', borderTop: '1px solid #eee' }}>
+    <div style={{ padding: '5px 14px', background: '#f9f9f9', fontSize: '7px', borderTop: '1px solid #e5e7eb' }}>
       Amount in Words: <strong>One Lakh Seventy Seven Thousand Rupees Only</strong> &nbsp;|&nbsp; <em>E &amp; O.E.</em>
     </div>
   </div>
@@ -284,9 +284,9 @@ const GSTInvoicePreview = () => (
 
 // ── Salary Slip preview ──────────────────────────────────────────────────────
 
-const SalarySlipPreview = () => (
-  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '8px', background: 'white', border: '1px solid #ccc' }}>
-    <div style={{ background: '#1e293b', color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+const SalarySlipPreview = ({ color }: { color: string }) => (
+  <div style={{ fontFamily: 'Inter, sans-serif', fontSize: '8px', background: 'white', border: '1px solid #e5e7eb', borderRadius: '4px', overflow: 'hidden' }}>
+    <div style={{ background: color, color: 'white', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div>
         <div style={{ fontWeight: 900, fontSize: '13px' }}>Your Company</div>
         <div style={{ fontSize: '7px', opacity: 0.7, marginTop: '2px' }}>123 Business Park, Mumbai - 400001</div>
@@ -319,7 +319,7 @@ const SalarySlipPreview = () => (
       {[['Days in Month', '31'], ['Days Worked', '29'], ['LOP Days', '0']].map(([l, v]) => (
         <div key={l} style={{ flex: 1, padding: '6px 12px', borderRight: '1px solid #ddd', textAlign: 'center' }}>
           <div style={{ fontSize: '6.5px', color: '#888', textTransform: 'uppercase' }}>{l}</div>
-          <div style={{ fontWeight: 900, fontSize: '12px', color: '#1e293b', marginTop: '2px' }}>{v}</div>
+          <div style={{ fontWeight: 900, fontSize: '12px', color, marginTop: '2px' }}>{v}</div>
         </div>
       ))}
     </div>
@@ -352,7 +352,7 @@ const SalarySlipPreview = () => (
       </tbody>
     </table>
 
-    <div style={{ background: '#1e293b', color: 'white', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div style={{ background: color, color: 'white', padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
       <div style={{ fontWeight: 900, fontSize: '10px', letterSpacing: '0.5px' }}>NET PAY</div>
       <div style={{ fontWeight: 900, fontSize: '15px' }}>₹38,962</div>
     </div>
@@ -378,8 +378,8 @@ interface Props {
 
 const DocumentTemplatePreview: React.FC<Props> = ({ type, brandColor = '#714B67' }) => {
   if (type === 'form_16') return <Form16Preview />;
-  if (type === 'gst_invoice') return <GSTInvoicePreview />;
-  if (type === 'salary_slip') return <SalarySlipPreview />;
+  if (type === 'gst_invoice') return <GSTInvoicePreview color={brandColor} />;
+  if (type === 'salary_slip') return <SalarySlipPreview color={brandColor} />;
   return <GenericPreview color={brandColor} type={type} />;
 };
 

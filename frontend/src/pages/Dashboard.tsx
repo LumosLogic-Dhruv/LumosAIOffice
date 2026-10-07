@@ -236,8 +236,8 @@ const Dashboard = () => {
             <div className="w-1.5 h-5 rounded-full" style={{ backgroundColor: BRAND }}></div>
             <h3 className="text-sm font-bold text-gray-900">Document Breakdown</h3>
           </div>
-          <div style={{ maxHeight: 200 }}>
-            <ResponsiveContainer width="100%" height={180}>
+          <div>
+            <ResponsiveContainer width="100%" height={Math.max(180, chartData.length * 28)}>
               <BarChart
                 layout="vertical"
                 data={chartData}
@@ -256,7 +256,8 @@ const Dashboard = () => {
                   tick={{ fontSize: 11, fill: '#6b7280' }}
                   axisLine={false}
                   tickLine={false}
-                  width={90}
+                  width={120}
+                  interval={0}
                   tickFormatter={(v: string) => v.charAt(0).toUpperCase() + v.slice(1)}
                 />
                 <Tooltip

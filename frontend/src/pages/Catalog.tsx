@@ -20,13 +20,19 @@ interface CatalogItem {
 }
 
 const catalogSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be at most 100 characters')
+    .refine((v) => /[A-Za-z]/.test(v), 'Name must contain at least one letter'),
   rate: z
     .string()
     .min(1, 'Rate is required')
-    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, { message: 'Rate must be a positive number' }),
-  description: z.string().optional(),
-  unit: z.string().optional(),
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) > 0, { message: 'Rate must be a positive number' })
+    .refine(v => !isNaN(parseFloat(v)) && parseFloat(v) <= 999999999, { message: 'Rate is too large' }),
+  description: z.string().max(200, 'Description must be at most 200 characters').optional(),
+  unit: z.string().max(20, 'Unit must be at most 20 characters').optional(),
   category: z.string().optional(),
 });
 
@@ -43,6 +49,7 @@ const Catalog = () => {
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<CatalogFormData>({
     resolver: zodResolver(catalogSchema),
+    mode: 'onChange',
   });
 
   useEffect(() => { fetchItems(); }, []);
@@ -99,8 +106,8 @@ const Catalog = () => {
         toast.success('Item added');
       }
       closeModal();
-    } catch {
-      toast.error('Failed to save item');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Failed to save item');
     } finally {
       setSaving(false);
     }
@@ -122,8 +129,8 @@ const Catalog = () => {
   const categories = [...new Set(items.map(i => i.category).filter(Boolean))];
   const filtered = items.filter(i =>
     i && typeof i === 'object' && (
-      (i.name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (i.category || '').toLowerCase().includes(search.toLowerCase())
+      (i.name || '').toLowerCase().includes(search.trim().toLowerCase()) ||
+      (i.category || '').toLowerCase().includes(search.trim().toLowerCase())
     )
   );
 
@@ -184,11 +191,20 @@ const Catalog = () => {
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
+          className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
           placeholder="Search catalog..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Clear search"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -202,8 +218,8 @@ const Catalog = () => {
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider">
               <tr>
                 <th className="px-5 py-3 text-left">Name</th>
@@ -217,7 +233,7 @@ const Catalog = () => {
               {filtered.map(item => (
                 <tr key={item._id} className="hover:bg-gray-50/50 transition-colors">
                   <td className="px-5 py-3">
-                    <p className="font-semibold text-gray-900">{item.name}</p>
+                    <p className="font-semibold text-gray-900 break-words max-w-[220px]">{item.name}</p>
                     {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[200px]">{item.description}</p>}
                   </td>
                   <td className="px-5 py-3">

@@ -6,18 +6,42 @@ import { z } from 'zod';
 import api from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { User, Mail, Lock, Building2, ArrowRight, CheckCircle2, UserPlus } from 'lucide-react';
+import { User, Mail, Lock, Building2, ArrowRight, CheckCircle2, UserPlus, Eye, EyeOff } from 'lucide-react';
 import Logo from '../components/Logo';
 
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters')
+  .max(72, 'Password must be at most 72 characters')
+  .refine((v) => v.trim().length > 0, 'Password cannot be only spaces')
+  .refine((v) => /[A-Za-z]/.test(v), 'Password must contain at least one letter')
+  .refine((v) => /[0-9]/.test(v), 'Password must contain at least one number');
+
 const baseSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().min(1, 'Email is required').email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  name: z
+    .string()
+    .trim()
+    .min(1, 'Full name is required')
+    .max(50, 'Name must be at most 50 characters')
+    .regex(/^[A-Za-z][A-Za-z ]*$/, 'Name can only contain letters and spaces')
+    .refine((v) => v.replace(/ /g, '').length >= 2, 'Name must contain at least 2 letters'),
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Email is required')
+    .max(254, 'Email is too long')
+    .email('Invalid email address'),
+  password: passwordSchema,
   companyName: z.string().optional(),
 });
 
 const schemaWithCompany = baseSchema.extend({
-  companyName: z.string().min(1, 'Company name is required'),
+  companyName: z
+    .string()
+    .trim()
+    .min(1, 'Company name is required')
+    .max(100, 'Company name must be at most 100 characters')
+    .refine((v) => /[A-Za-z]/.test(v), 'Company name must contain at least one letter'),
 });
 
 type FormData = {
@@ -33,11 +57,13 @@ const Register = () => {
   const isInvite = !!inviteCode;
   const [loading, setLoading] = useState(false);
   const [inviteError, setInviteError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
   const { login } = useAuth();
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<FormData>({
     resolver: zodResolver(isInvite ? baseSchema : schemaWithCompany),
+    mode: 'onChange',
     defaultValues: {
       name: '',
       email: '',
@@ -179,13 +205,27 @@ const Register = () => {
                 <label className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-1.5">
                   <Lock size={12} /> Password
                 </label>
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  className="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
-                  {...register('password')}
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="••••••••"
+                    className="w-full px-4 py-3 pr-11 border border-gray-200 rounded-xl focus:ring-2 focus:ring-[#714B67]/20 focus:border-[#714B67] outline-none transition-all bg-gray-50 font-medium text-gray-700 text-sm"
+                    {...register('password')}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    tabIndex={-1}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
                 {errors.password && <p className="text-xs text-red-500 mt-1">{errors.password.message}</p>}
+                {!errors.password && (
+                  <p className="text-[11px] text-gray-400 mt-1">Use at least 8 characters with letters and numbers.</p>
+                )}
               </div>
 
               <button

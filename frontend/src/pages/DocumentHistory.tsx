@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { Clock, Eye, RotateCcw, ArrowLeft } from 'lucide-react';
+import { Clock, Eye, RotateCcw, ArrowLeft, Trash2 } from 'lucide-react';
 import Breadcrumbs from '../components/Breadcrumbs';
 
 const DocumentHistory = () => {
@@ -25,6 +25,9 @@ const DocumentHistory = () => {
     }
   };
 
+  const [deleteIndex, setDeleteIndex] = useState<number | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const handleRestore = async (versionData: any) => {
     try {
       await api.put(`/documents/${id}`, { data: versionData });
@@ -32,6 +35,29 @@ const DocumentHistory = () => {
       window.location.href = `/dashboard/documents/${id}`;
     } catch (error) {
       toast.error('Failed to restore version');
+    }
+  };
+
+  const handleDeleteVersion = async () => {
+    if (deleteIndex === null) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/documents/${id}/history/${deleteIndex}`);
+      toast.success('History version deleted');
+      setDeleteIndex(null);
+      fetchHistory();
+    } catch (error) {
+      toast.error('Failed to delete history version');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleView = (version: any) => {
+    if (version?.pdfUrl) {
+      window.open(version.pdfUrl, '_blank', 'noopener,noreferrer');
+    } else {
+      toast.error('No PDF available for this version.');
     }
   };
 
@@ -70,18 +96,14 @@ const DocumentHistory = () => {
                   </p>
                 </div>
               </div>
-              <div className="flex space-x-2">
-                {version.pdfUrl && (
-                  <a 
-                    href={version.pdfUrl} 
-                    target="_blank" 
-                    rel="noreferrer"
-                    className="p-2 text-gray-500 hover:text-primary transition-colors"
-                    title="View PDF"
-                  >
-                    <Eye size={20} />
-                  </a>
-                )}
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => handleView(version)}
+                  className="p-2 text-gray-500 hover:text-primary transition-colors"
+                  title="View PDF"
+                >
+                  <Eye size={20} />
+                </button>
                 <button
                   onClick={() => handleRestore(version.data)}
                   className="flex items-center space-x-2 px-4 py-2 text-primary border border-primary rounded-lg hover:bg-primary hover:text-white transition-all"
@@ -89,11 +111,53 @@ const DocumentHistory = () => {
                   <RotateCcw size={18} />
                   <span>Restore</span>
                 </button>
+                <button
+                  onClick={() => setDeleteIndex(idx)}
+                  className="p-2 text-gray-400 hover:text-red-500 transition-colors"
+                  title="Delete version"
+                >
+                  <Trash2 size={18} />
+                </button>
               </div>
             </div>
           )).reverse()}
         </div>
       </div>
+
+      {deleteIndex !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-red-50 rounded-xl">
+                <Trash2 size={18} className="text-red-500" />
+              </div>
+              <div>
+                <p className="font-bold text-gray-900 text-sm">Delete Version</p>
+                <p className="text-xs text-gray-400">This cannot be undone.</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 mb-5">
+              Are you sure you want to delete this history version?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setDeleteIndex(null)}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteVersion}
+                disabled={deleting}
+                className="flex-1 px-4 py-2 text-sm font-semibold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors disabled:opacity-60"
+              >
+                {deleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

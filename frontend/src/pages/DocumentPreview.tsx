@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock,
+  Mail,
 } from 'lucide-react';
 import api from '../services/api';
 import toast from 'react-hot-toast';
@@ -51,6 +52,16 @@ const AI_TONES: { value: AiTone; label: string }[] = [
   { value: 'formal', label: 'Formal' },
   { value: 'concise', label: 'Concise' },
 ];
+
+const formatInputDate = (timestamp: number | undefined | null): string => {
+  if (!timestamp) return '';
+  const d = new Date(timestamp);
+  if (isNaN(d.getTime())) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
 
 const DocumentPreview = () => {
   const { id } = useParams();
@@ -192,6 +203,26 @@ const DocumentPreview = () => {
     }
   };
 
+  const handleDownload = async () => {
+    const pdfUrl = document?.pdfUrl;
+    if (!pdfUrl) return;
+    try {
+      const res = await fetch(pdfUrl);
+      if (!res.ok) throw new Error('download failed');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${document?.title || 'document'}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+    }
+  };
+
   const handleAiEdit = async () => {
     if (!aiInstruction) return toast.error('Please enter instructions');
     setEditingAI(true);
@@ -209,6 +240,10 @@ const DocumentPreview = () => {
   };
 
   const handleShareSubmit = async () => {
+    if (shareRecipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(shareRecipientEmail)) {
+      toast.error('Please enter a valid recipient email address.');
+      return;
+    }
     setSharing(true);
     try {
       let expiresInDays: number | undefined;
@@ -342,9 +377,9 @@ const DocumentPreview = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-20">
       <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-        <Link to="/dashboard" className="flex items-center font-black text-gray-500 hover:text-primary transition-all uppercase text-sm tracking-widest group">
+        <Link to="/dashboard/documents" className="flex items-center font-black text-gray-500 hover:text-primary transition-all uppercase text-sm tracking-widest group">
           <ArrowLeft size={20} className="mr-2 group-hover:-translate-x-1 transition-transform" />
-          Back to Dashboard
+          Back to My Documents
         </Link>
         <div className="flex items-center gap-2 flex-wrap justify-end">
           <Link
@@ -489,8 +524,14 @@ const DocumentPreview = () => {
                       style={{ backgroundColor: brandColor }}
                       className="w-full py-2 text-xs font-black text-white rounded-xl hover:opacity-90 transition-all flex items-center justify-center gap-2 disabled:opacity-50 uppercase tracking-wider"
                     >
-                      {sharing ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
-                      Copy Link
+                      {sharing ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : shareRecipientEmail ? (
+                        <Mail size={13} />
+                      ) : (
+                        <Share2 size={13} />
+                      )}
+                      {shareRecipientEmail ? 'Send Link' : 'Copy Link'}
                     </button>
                   </>
                 )}
@@ -510,17 +551,14 @@ const DocumentPreview = () => {
 
           {document.pdfUrl && (
             <>
-              <a
-                href={document.pdfUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download
+              <button
+                onClick={handleDownload}
                 className="flex items-center space-x-2 px-6 py-3 border-2 rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-80 transition-all"
                 style={{ borderColor: brandColor, color: brandColor }}
               >
                 <Download size={18} />
                 <span>Download</span>
-              </a>
+              </button>
               <button
                 onClick={() => setShowPdfModal(true)}
                 className="flex items-center space-x-2 px-6 py-3 border-2 rounded-2xl font-black text-xs uppercase tracking-widest hover:opacity-80 transition-all"
@@ -615,7 +653,7 @@ const DocumentPreview = () => {
                         <input
                           type="date"
                           className="text-lg font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
-                          value={new Date(tempDoc._creationTime ?? Date.now()).toISOString().split('T')[0]}
+                          value={formatInputDate(tempDoc._creationTime ?? Date.now())}
                           onChange={(e) => setTempDoc({ ...tempDoc, _creationTime: new Date(e.target.value).getTime() })}
                         />
                       ) : (
@@ -628,7 +666,7 @@ const DocumentPreview = () => {
                         <input
                           type="date"
                           className="text-sm font-black text-gray-900 bg-gray-50 p-1 rounded border-2 border-dashed border-gray-200 outline-none"
-                          value={expiryDateObj ? expiryDateObj.toISOString().split('T')[0] : ''}
+                          value={formatInputDate(expiryTimestamp)}
                           onChange={(e) => handleExpiryDateChange(e.target.value)}
                         />
                       </div>

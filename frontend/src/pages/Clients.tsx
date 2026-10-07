@@ -21,11 +21,31 @@ interface Client {
 }
 
 const clientSchema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters'),
-  email: z.string().email('Invalid email address').or(z.literal('')).optional(),
-  phone: z.string().optional(),
-  address: z.string().optional(),
-  gstin: z.string().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Name must be at least 2 characters')
+    .max(100, 'Name must be at most 100 characters')
+    .refine((v) => /[A-Za-z]/.test(v), 'Name must contain at least one letter'),
+  email: z
+    .string()
+    .trim()
+    .max(254, 'Email is too long')
+    .email('Invalid email address')
+    .or(z.literal(''))
+    .optional(),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[0-9]+$/.test(v), 'Phone must contain only numbers')
+    .refine((v) => !v || (v.length >= 10 && v.length <= 15), 'Phone must be 10 to 15 digits')
+    .optional(),
+  gstin: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[A-Za-z0-9]{15}$/.test(v), 'GSTIN must be 15 alphanumeric characters')
+    .optional(),
+  address: z.string().max(200, 'Address must be at most 200 characters').optional(),
   notes: z.string().optional(),
 });
 
@@ -42,6 +62,7 @@ const Clients = () => {
 
   const { register, handleSubmit, formState: { errors }, reset } = useForm<ClientFormData>({
     resolver: zodResolver(clientSchema),
+    mode: 'onChange',
   });
 
   useEffect(() => { fetchClients(); }, []);
@@ -98,8 +119,8 @@ const Clients = () => {
         toast.success('Client added');
       }
       closeModal();
-    } catch {
-      toast.error('Failed to save client');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Failed to save client');
     } finally {
       setSaving(false);
     }
@@ -120,8 +141,8 @@ const Clients = () => {
 
   const filtered = clients.filter(c =>
     c && typeof c === 'object' && (
-      (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
-      (c.email || '').toLowerCase().includes(search.toLowerCase())
+      (c.name || '').toLowerCase().includes(search.trim().toLowerCase()) ||
+      (c.email || '').toLowerCase().includes(search.trim().toLowerCase())
     )
   );
 
@@ -185,11 +206,20 @@ const Clients = () => {
       <div className="relative">
         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
         <input
-          className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
+          className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
           placeholder="Search clients..."
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {search && (
+          <button
+            onClick={() => setSearch('')}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            title="Clear search"
+          >
+            <X size={13} />
+          </button>
+        )}
       </div>
 
       {filtered.length === 0 ? (
@@ -211,9 +241,9 @@ const Clients = () => {
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0" style={{ backgroundColor: BRAND }}>
                     {(c.name || '?')[0].toUpperCase()}
                   </div>
-                  <div>
-                    <p className="font-semibold text-gray-900 text-sm leading-tight">{c.name}</p>
-                    {c.gstin && <p className="text-xs text-gray-400 font-mono">{c.gstin}</p>}
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 text-sm leading-tight break-words">{c.name}</p>
+                    {c.gstin && <p className="text-xs text-gray-400 font-mono break-all">{c.gstin}</p>}
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -235,7 +265,7 @@ const Clients = () => {
                 {c.phone && (
                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
                     <Phone size={11} className="shrink-0" />
-                    <span>{c.phone}</span>
+                    <span className="break-all">{c.phone}</span>
                   </div>
                 )}
                 {c.address && (
@@ -286,7 +316,8 @@ const Clients = () => {
                 <label className="text-xs font-semibold text-gray-500">Phone</label>
                 <input
                   type="text"
-                  placeholder="+91 98765 43210"
+                  inputMode="numeric"
+                  placeholder="9876543210"
                   className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 focus:border-[#714B67]"
                   {...register('phone')}
                 />

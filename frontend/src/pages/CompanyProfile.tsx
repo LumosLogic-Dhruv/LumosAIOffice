@@ -10,10 +10,39 @@ import {
 } from 'lucide-react';
 
 const companySchema = z.object({
-  name: z.string().min(1, 'Company name is required'),
-  email: z.string().min(1, 'Email is required').email('Please enter a valid email'),
-  website: z.string().refine((v) => !v || /^https?:\/\/.+/.test(v), { message: 'Enter a valid URL (e.g. https://example.com)' }),
-  phone: z.string().optional(),
+  name: z
+    .string()
+    .trim()
+    .min(2, 'Company name must be at least 2 characters')
+    .max(100, 'Company name must be at most 100 characters')
+    .refine((v) => /[A-Za-z]/.test(v), 'Company name must contain at least one letter'),
+  email: z
+    .string()
+    .trim()
+    .min(1, 'Email is required')
+    .max(254, 'Email is too long')
+    .email('Please enter a valid email'),
+  phone: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^[0-9]+$/.test(v), 'Phone must contain only numbers')
+    .refine((v) => !v || (v.length >= 10 && v.length <= 15), 'Phone must be 10 to 15 digits')
+    .optional(),
+  website: z
+    .string()
+    .trim()
+    .refine((v) => !v || /^https?:\/\/.+/.test(v), { message: 'Enter a valid URL (e.g. https://example.com)' })
+    .refine((v) => !v || v.length >= 10, { message: 'Website URL must be at least 10 characters' })
+    .optional(),
+  gstNumber: z
+    .string()
+    .trim()
+    .refine(
+      (v) => !v || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(v.toUpperCase()),
+      { message: 'Enter a valid GSTIN (e.g. 27ABCDE1234F1Z5)' }
+    )
+    .optional(),
+  address: z.string().max(200, 'Address must be at most 200 characters').optional(),
 });
 
 const pwSchema = z
@@ -57,7 +86,7 @@ const SectionHeader = ({ icon: Icon, title, subtitle }: { icon: any; title: stri
 );
 
 const CompanyProfile = () => {
-  const { logout } = useAuth();
+  const { logout, updateUser, user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -88,12 +117,16 @@ const CompanyProfile = () => {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const result = companySchema.safeParse({
-      name: profile?.name || '',
-      email: profile?.email || '',
-      website: profile?.website || '',
-      phone: profile?.phone || '',
-    });
+    const trimmed = {
+      name: (profile?.name || '').trim(),
+      email: (profile?.email || '').trim(),
+      website: (profile?.website || '').trim(),
+      phone: (profile?.phone || '').trim(),
+      gstNumber: (profile?.gstNumber || '').trim(),
+      address: (profile?.address || '').trim(),
+      defaultTerms: (profile?.defaultTerms || '').trim(),
+    };
+    const result = companySchema.safeParse(trimmed);
     if (!result.success) {
       const errs: Record<string, string> = {};
       for (const issue of result.error.issues) errs[issue.path[0] as string] = issue.message;
@@ -103,10 +136,14 @@ const CompanyProfile = () => {
     setCompanyErrors({});
     setUpdating(true);
     try {
-      await api.put('/company/update', profile);
+      const previousEmail = user?.email;
+      await api.put('/company/update', { ...profile, ...trimmed });
+      if (previousEmail && trimmed.email && previousEmail !== trimmed.email) {
+        updateUser({ email: trimmed.email });
+      }
       toast.success('Profile updated successfully');
-    } catch {
-      toast.error('Update failed');
+    } catch (error: any) {
+      toast.error(error?.response?.data?.detail || 'Update failed');
     } finally {
       setUpdating(false);
     }
@@ -228,9 +265,10 @@ const CompanyProfile = () => {
 
             <div className="space-y-1.5 md:col-span-2">
               <label className="text-xs font-semibold text-gray-500 flex items-center gap-1.5"><MapPin size={12} />Office Address</label>
-              <textarea className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg outline-none transition-all bg-gray-50 text-gray-700 h-20 resize-none"
+              <textarea className={`w-full px-3 py-2 text-sm border rounded-lg outline-none transition-all bg-gray-50 text-gray-700 h-20 resize-none ${companyErrors.address ? 'border-red-400' : 'border-gray-200'}`}
                 onFocus={e => e.target.style.borderColor = BRAND} onBlur={e => e.target.style.borderColor = ''}
-                value={profile?.address || ''} onChange={(e) => setProfile({ ...profile, address: e.target.value })} />
+                value={profile?.address || ''} onChange={(e) => { setProfile({ ...profile, address: e.target.value }); if (companyErrors.address) setCompanyErrors(p => ({ ...p, address: '' })); }} />
+              {companyErrors.address && <p className="text-xs text-red-500 font-semibold">{companyErrors.address}</p>}
             </div>
 
             <div className="space-y-1.5 md:col-span-2">

@@ -94,6 +94,34 @@ const DOCUMENT_TEMPLATES: Record<string, { description: string; sections: string
   },
 };
 
+const hasLetter = (value: string) => /[A-Za-z]/.test(value);
+
+const validateTitle = (value: string): string | undefined => {
+  const t = value.trim();
+  if (!t) return 'Document title is required';
+  if (t.length < 3) return 'Document title must be at least 3 characters';
+  if (t.length > 100) return 'Document title must be at most 100 characters';
+  if (!hasLetter(t)) return 'Document title must contain at least one letter';
+  return undefined;
+};
+
+const validateClientName = (value: string): string | undefined => {
+  const t = value.trim();
+  if (!t) return 'Client name is required';
+  if (t.length < 2) return 'Client name must be at least 2 characters';
+  if (t.length > 100) return 'Client name must be at most 100 characters';
+  if (!hasLetter(t)) return 'Client name must contain at least one letter';
+  return undefined;
+};
+
+const validateRequirement = (value: string): string | undefined => {
+  const t = value.trim();
+  if (!t) return 'Please describe your requirements';
+  if (t.length < 10) return 'Requirement must be at least 10 characters';
+  if (!hasLetter(t)) return 'Requirement must contain at least one letter';
+  return undefined;
+};
+
 const CreateDocument = () => {
   const { user } = useAuth();
   const [mode, setMode] = useState<'ai' | 'manual'>('ai');
@@ -104,6 +132,9 @@ const CreateDocument = () => {
   const [clientName, setClientName] = useState('');
   const [clients, setClients] = useState<any[]>([]);
   const [selectedClient, setSelectedClient] = useState<any>(null);
+  const [errors, setErrors] = useState<{ title?: string; clientName?: string; rawText?: string }>({});
+  const [touched, setTouched] = useState<{ title?: boolean; clientName?: boolean; rawText?: boolean }>({});
+  const [sectionContents, setSectionContents] = useState<Record<string, string>>({});
   const navigate = useNavigate();
 
   if (user?.role === 'viewer') {
@@ -126,7 +157,12 @@ const CreateDocument = () => {
   }, []);
 
   const handleAIProcess = async () => {
-    if (!rawText.trim()) return toast.error('Please describe your requirements');
+    const err = validateRequirement(rawText);
+    if (err) {
+      setErrors((p) => ({ ...p, rawText: err }));
+      setTouched((p) => ({ ...p, rawText: true }));
+      return;
+    }
     setProcessing(true);
     try {
       const response = await api.post('/documents/process-ai', { type, rawText });
@@ -161,7 +197,13 @@ const CreateDocument = () => {
 
   const handleManualCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !clientName) return toast.error('Please fill all fields');
+    const titleErr = validateTitle(title);
+    const clientErr = validateClientName(clientName);
+    if (titleErr || clientErr) {
+      setErrors({ title: titleErr, clientName: clientErr });
+      setTouched({ title: true, clientName: true });
+      return;
+    }
     try {
       const clientData = selectedClient ? {
         clientEmail: selectedClient.email || '',
@@ -171,8 +213,8 @@ const CreateDocument = () => {
       } : {};
       const template = DOCUMENT_TEMPLATES[type];
       const sections = template
-        ? template.sections.map(s => ({ heading: s, content: '' }))
-        : [{ heading: 'Overview', content: 'Enter content here...' }];
+        ? template.sections.map(s => ({ heading: s, content: (sectionContents[s] || '').trim() }))
+        : [{ heading: 'Overview', content: (sectionContents['Overview'] || '').trim() }];
       const response = await api.post('/documents', {
         type,
         title,
@@ -240,7 +282,7 @@ const CreateDocument = () => {
                 onFocus={e => e.target.style.borderColor = BRAND}
                 onBlur={e => e.target.style.borderColor = ''}
                 value={type}
-                onChange={(e) => setType(e.target.value)}
+                onChange={(e) => { setType(e.target.value); setSectionContents({}); }}
               >
                 {DOCUMENT_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
@@ -273,14 +315,26 @@ const CreateDocument = () => {
                   Describe your requirements
                 </label>
                 <textarea
-                  className="w-full px-3 py-3 text-sm border border-gray-200 rounded-lg h-44 focus:outline-none resize-none transition-all bg-gray-50 text-gray-800 placeholder:text-gray-300 leading-relaxed"
+                  className={`w-full px-3 py-3 text-sm border rounded-lg h-44 focus:outline-none resize-none transition-all bg-gray-50 text-gray-800 placeholder:text-gray-300 leading-relaxed ${touched.rawText && errors.rawText ? 'border-red-300' : 'border-gray-200'}`}
                   onFocus={e => e.target.style.borderColor = BRAND}
-                  onBlur={e => e.target.style.borderColor = ''}
+                  onBlur={e => {
+                    e.target.style.borderColor = '';
+                    setTouched(p => ({ ...p, rawText: true }));
+                    setErrors(p => ({ ...p, rawText: validateRequirement(rawText) }));
+                  }}
                   placeholder="Example: Generate a formal quotation for Lumos Logic for a 10-page e-commerce website with payment gateway and user dashboard. Total price: ₹1,50,000."
                   value={rawText}
-                  onChange={(e) => setRawText(e.target.value)}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setRawText(val);
+                    if (touched.rawText) setErrors(p => ({ ...p, rawText: validateRequirement(val) }));
+                  }}
                 />
-                <p className="text-xs text-gray-400 mt-1.5">Be specific about scope, pricing, and client name for best results.</p>
+                {touched.rawText && errors.rawText ? (
+                  <p className="text-xs text-red-500 mt-1.5">{errors.rawText}</p>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1.5">Be specific about scope, pricing, and client name for best results.</p>
+                )}
               </div>
               <button
                 onClick={handleAIProcess}
@@ -303,13 +357,21 @@ const CreateDocument = () => {
                   <input
                     type="text"
                     placeholder="e.g., Annual Maintenance Contract"
-                    className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none transition-all bg-gray-50 text-gray-700"
+                    className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-all bg-gray-50 text-gray-700 ${touched.title && errors.title ? 'border-red-300' : 'border-gray-200'}`}
                     onFocus={e => e.target.style.borderColor = BRAND}
-                    onBlur={e => e.target.style.borderColor = ''}
+                    onBlur={e => {
+                      e.target.style.borderColor = '';
+                      setTouched(p => ({ ...p, title: true }));
+                      setErrors(p => ({ ...p, title: validateTitle(title) }));
+                    }}
                     value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTitle(val);
+                      if (touched.title) setErrors(p => ({ ...p, title: validateTitle(val) }));
+                    }}
                   />
+                  {touched.title && errors.title && <p className="text-xs text-red-500 mt-1">{errors.title}</p>}
                 </div>
                 {clients.length > 0 && (
                   <div className="space-y-1.5">
@@ -346,14 +408,43 @@ const CreateDocument = () => {
                   <input
                     type="text"
                     placeholder="e.g., Microsoft India Pvt Ltd"
-                    className="w-full px-3 py-2.5 text-sm border border-gray-200 rounded-lg focus:outline-none transition-all bg-gray-50 text-gray-700"
+                    className={`w-full px-3 py-2.5 text-sm border rounded-lg focus:outline-none transition-all bg-gray-50 text-gray-700 ${touched.clientName && errors.clientName ? 'border-red-300' : 'border-gray-200'}`}
                     onFocus={e => e.target.style.borderColor = BRAND}
-                    onBlur={e => e.target.style.borderColor = ''}
+                    onBlur={e => {
+                      e.target.style.borderColor = '';
+                      setTouched(p => ({ ...p, clientName: true }));
+                      setErrors(p => ({ ...p, clientName: validateClientName(clientName) }));
+                    }}
                     value={clientName}
-                    onChange={(e) => { setClientName(e.target.value); setSelectedClient(null); }}
-                    required
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setClientName(val);
+                      setSelectedClient(null);
+                      if (touched.clientName) setErrors(p => ({ ...p, clientName: validateClientName(val) }));
+                    }}
                   />
+                  {touched.clientName && errors.clientName && <p className="text-xs text-red-500 mt-1">{errors.clientName}</p>}
                 </div>
+
+                {template && template.sections.length > 0 && (
+                  <div className="space-y-3 border-t border-gray-100 pt-4">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Template Sections</p>
+                    {template.sections.map((section) => (
+                      <div key={section} className="space-y-1">
+                        <label className="text-[11px] font-medium text-gray-600">{section}</label>
+                        <textarea
+                          rows={2}
+                          placeholder={`Enter content for "${section}"...`}
+                          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none transition-all bg-gray-50 text-gray-700 resize-none"
+                          onFocus={e => e.target.style.borderColor = BRAND}
+                          onBlur={e => e.target.style.borderColor = ''}
+                          value={sectionContents[section] || ''}
+                          onChange={(e) => setSectionContents(prev => ({ ...prev, [section]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
                 type="submit"

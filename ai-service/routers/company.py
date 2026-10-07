@@ -32,10 +32,28 @@ async def update_company_profile(
     for field in ("_id", "_creationTime", "createdAt"):
         update_data.pop(field, None)
 
-    return await convex_client.mutation("companies:update", {
+    # Trim whitespace from all string fields before saving (BUG-095)
+    for key in ("name", "email", "phone", "website", "gstNumber", "address", "defaultTerms"):
+        if key in update_data and isinstance(update_data[key], str):
+            update_data[key] = update_data[key].strip()
+
+    updated = await convex_client.mutation("companies:update", {
         "id": current_user["companyId"],
         **update_data,
     })
+
+    # Sync the login identifier when the business email changes (BUG-100)
+    new_email = update_data.get("email")
+    if new_email and current_user.get("email") != new_email:
+        try:
+            await convex_client.mutation("users:updateEmail", {
+                "id": current_user["_id"],
+                "email": new_email,
+            })
+        except Exception:
+            pass
+
+    return updated
 
 
 @router.put("/logo")

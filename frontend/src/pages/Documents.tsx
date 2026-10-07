@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 import toast from 'react-hot-toast';
-import { FileText, Search, Edit3, Copy, Trash2, Plus, Loader2, Share2, Check, Download, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { FileText, Search, Edit3, Copy, Trash2, Plus, Loader2, Share2, Check, Download, ChevronLeft, ChevronRight, X, Mail } from 'lucide-react';
 
 const BRAND = '#714B67';
 const PAGE_SIZE = 20;
@@ -50,7 +50,6 @@ interface SharePopoverState {
 const Documents = () => {
   const [documents, setDocuments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageLoading, setPageLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -65,10 +64,6 @@ const Documents = () => {
   const [updatingPayment, setUpdatingPayment] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [continueCursor, setContinueCursor] = useState<string | null>(null);
-  const [isDone, setIsDone] = useState(false);
-  const [cursorHistory, setCursorHistory] = useState<string[]>([]);
-  const [totalCount, setTotalCount] = useState<number | null>(null);
 
   const [sharePopover, setSharePopover] = useState<SharePopoverState | null>(null);
   const sharePopoverRef = useRef<HTMLDivElement>(null);
@@ -76,9 +71,12 @@ const Documents = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchDocuments(null, true);
-    fetchStats();
+    fetchAllDocuments();
   }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, typeFilter, statusFilter, sort]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -90,53 +88,51 @@ const Documents = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const fetchStats = async () => {
+  const fetchAllDocuments = async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/documents/stats');
-      setTotalCount(res.data.total ?? null);
-    } catch {
-    }
-  };
-
-  const fetchDocuments = async (cursor: string | null, initial = false) => {
-    if (initial) {
-      setLoading(true);
-    } else {
-      setPageLoading(true);
-    }
-    try {
-      const url = cursor
-        ? `/documents?paginate=true&limit=${PAGE_SIZE}&cursor=${encodeURIComponent(cursor)}`
-        : `/documents?paginate=true&limit=${PAGE_SIZE}`;
-      const res = await api.get(url);
-      const data = res.data;
-      setDocuments(data.page ?? []);
-      setContinueCursor(data.continueCursor ?? null);
-      setIsDone(data.isDone ?? true);
+      const res = await api.get('/documents');
+      const data = Array.isArray(res.data) ? res.data : (res.data?.documents ?? []);
+      setDocuments(data);
     } catch {
       toast.error('Failed to load documents');
     } finally {
       setLoading(false);
-      setPageLoading(false);
     }
   };
 
-  const handleNextPage = async () => {
-    if (!continueCursor || isDone) return;
-    setCursorHistory(prev => [...prev, continueCursor]);
-    setCurrentPage(p => p + 1);
-    await fetchDocuments(continueCursor);
-  };
+  const filteredDocuments = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let result = documents.filter((doc) => {
+      const matchesSearch = !q
+        ? true
+        : (doc.title || '').toLowerCase().includes(q) ||
+          (doc.clientName || '').toLowerCase().includes(q) ||
+          (doc.type || '').toLowerCase().includes(q);
+      const matchesType = typeFilter === 'all' || doc.type === typeFilter;
+      const matchesStatus = statusFilter === 'all' || (doc.status || 'draft') === statusFilter;
+      return matchesSearch && matchesType && matchesStatus;
+    });
+    result = result.slice();
+    if (sort === 'newest') {
+      result.sort((a, b) =>
+        new Date(b._creationTime || b.updatedAt || 0).getTime() -
+        new Date(a._creationTime || a.updatedAt || 0).getTime()
+      );
+    } else if (sort === 'oldest') {
+      result.sort((a, b) =>
+        new Date(a._creationTime || a.updatedAt || 0).getTime() -
+        new Date(b._creationTime || b.updatedAt || 0).getTime()
+      );
+    } else if (sort === 'az') {
+      result.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+    }
+    return result;
+  }, [documents, search, typeFilter, statusFilter, sort]);
 
-  const handlePrevPage = async () => {
-    if (currentPage <= 1) return;
-    const newHistory = [...cursorHistory];
-    newHistory.pop();
-    const prevCursor = newHistory.length > 0 ? newHistory[newHistory.length - 1] : null;
-    setCursorHistory(newHistory);
-    setCurrentPage(p => p - 1);
-    await fetchDocuments(prevCursor);
-  };
+  const totalCount = filteredDocuments.length;
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
+  const paginatedDocuments = filteredDocuments.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleDuplicate = async (doc: any) => {
     setDuplicating(doc._id);
@@ -164,6 +160,10 @@ const Documents = () => {
 
   const handleShareSubmit = async (doc: any) => {
     if (!sharePopover) return;
+    if (sharePopover.recipientEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(sharePopover.recipientEmail)) {
+      toast.error('Please enter a valid recipient email address.');
+      return;
+    }
     setSharing(doc._id);
     try {
       let expiresInDays: number | undefined;
@@ -266,33 +266,42 @@ const Documents = () => {
     });
   };
 
-  const allOnPageSelected = documents.length > 0 && documents.every(d => selected.has(d._id));
+  const allOnPageSelected = paginatedDocuments.length > 0 && paginatedDocuments.every(d => selected.has(d._id));
   const someSelected = selected.size > 0;
 
   const toggleSelectAll = () => {
     if (allOnPageSelected) {
       setSelected(prev => {
         const s = new Set(prev);
-        documents.forEach(d => s.delete(d._id));
+        paginatedDocuments.forEach(d => s.delete(d._id));
         return s;
       });
     } else {
       setSelected(prev => {
         const s = new Set(prev);
-        documents.forEach(d => s.add(d._id));
+        paginatedDocuments.forEach(d => s.add(d._id));
         return s;
       });
     }
   };
 
+  const formatDate = (value: any) => {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '';
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
+
   const exportCSV = () => {
     const headers = ['Title', 'Client', 'Type', 'Status', 'Date'];
-    const rows = documents.map(d => [
+    const rows = filteredDocuments.map(d => [
       `"${(d.title || '').replace(/"/g, '""')}"`,
       `"${(d.clientName || '').replace(/"/g, '""')}"`,
       `"${(d.type || '').replace(/_/g, ' ')}"`,
       `"${d.status || 'draft'}"`,
-      `"${new Date(d._creationTime || d.updatedAt).toLocaleDateString()}"`,
+      `"${formatDate(d._creationTime || d.updatedAt)}"`,
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -304,8 +313,8 @@ const Documents = () => {
     URL.revokeObjectURL(url);
   };
 
-  const startIndex = (currentPage - 1) * PAGE_SIZE + 1;
-  const endIndex = (currentPage - 1) * PAGE_SIZE + documents.length;
+  const startIndex = totalCount === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+  const endIndex = Math.min(currentPage * PAGE_SIZE, totalCount);
 
   if (loading) return (
     <div className="h-full flex items-center justify-center">
@@ -318,9 +327,7 @@ const Documents = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900">My Documents</h1>
-          <p className="text-xs text-gray-400 mt-0.5">
-            {totalCount !== null ? `${totalCount} total documents` : `${documents.length} documents on this page`}
-          </p>
+          <p className="text-xs text-gray-400 mt-0.5">{totalCount} total documents</p>
         </div>
         <div className="flex items-center gap-2">
           <button
@@ -345,11 +352,20 @@ const Documents = () => {
         <div className="relative flex-1 min-w-[180px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
+            className="w-full pl-9 pr-9 py-2 text-sm border border-gray-200 rounded-lg bg-white outline-none focus:border-[#714B67] transition-colors"
             placeholder="Search by title, client or type..."
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+              title="Clear search"
+            >
+              <X size={13} />
+            </button>
+          )}
         </div>
         <select
           value={typeFilter}
@@ -383,6 +399,15 @@ const Documents = () => {
             </button>
           ))}
         </div>
+        {(typeFilter !== 'all' || statusFilter !== 'all') && (
+          <button
+            onClick={() => { setTypeFilter('all'); setStatusFilter('all'); }}
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-gray-500 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <X size={12} />
+            Clear Filters
+          </button>
+        )}
       </div>
 
       {someSelected && (
@@ -399,32 +424,30 @@ const Documents = () => {
         </div>
       )}
 
-      {documents.length === 0 && !pageLoading ? (
+      {filteredDocuments.length === 0 ? (
         <div className="bg-white rounded-xl border border-gray-100 py-16 text-center">
           <div className="p-4 bg-gray-50 rounded-xl inline-block mb-3">
             <FileText size={32} className="text-gray-200" />
           </div>
-          <p className="text-gray-400 text-sm">No documents yet.</p>
-          <Link
-            to="/dashboard/documents/create"
-            style={{ backgroundColor: BRAND }}
-            className="mt-4 inline-block px-5 py-2 text-white rounded-lg text-sm font-semibold shadow"
-          >
-            Create First Document
-          </Link>
+          {documents.length === 0 ? (
+            <>
+              <p className="text-gray-400 text-sm">No documents yet.</p>
+              <Link
+                to="/dashboard/documents/create"
+                style={{ backgroundColor: BRAND }}
+                className="mt-4 inline-block px-5 py-2 text-white rounded-lg text-sm font-semibold shadow"
+              >
+                Create First Document
+              </Link>
+            </>
+          ) : (
+            <p className="text-gray-400 text-sm">No documents match your search or filters.</p>
+          )}
         </div>
       ) : (
         <>
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden relative">
-            {pageLoading && (
-              <div className="absolute inset-0 bg-white/70 z-10 flex items-center justify-center rounded-xl">
-                <div className="flex items-center gap-2 text-sm font-semibold text-gray-500">
-                  <Loader2 size={16} className="animate-spin" style={{ color: BRAND }} />
-                  Loading...
-                </div>
-              </div>
-            )}
-            <table className="w-full text-sm">
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto relative">
+            <table className="w-full text-sm min-w-[720px]">
               <thead className="bg-gray-50 text-xs font-semibold text-gray-400 uppercase tracking-wider">
                 <tr>
                   <th className="px-4 py-3 text-center w-10">
@@ -444,7 +467,7 @@ const Documents = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {documents.map(doc => {
+                {paginatedDocuments.map(doc => {
                   const typeColor = TYPE_COLORS[doc.type] || BRAND;
                   const docStatus: Status = doc.status || 'draft';
                   const statusStyle = STATUS_COLORS[docStatus] || STATUS_COLORS.draft;
@@ -611,8 +634,14 @@ const Documents = () => {
                                       style={{ backgroundColor: BRAND }}
                                       className="w-full py-1.5 text-xs font-bold text-white rounded-lg hover:opacity-90 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
                                     >
-                                      {sharing === doc._id ? <Loader2 size={11} className="animate-spin" /> : <Share2 size={11} />}
-                                      Copy Link
+                                      {sharing === doc._id ? (
+                                        <Loader2 size={11} className="animate-spin" />
+                                      ) : sharePopover?.recipientEmail ? (
+                                        <Mail size={11} />
+                                      ) : (
+                                        <Share2 size={11} />
+                                      )}
+                                      {sharePopover?.recipientEmail ? 'Send Link' : 'Copy Link'}
                                     </button>
                                   </>
                                 )}
@@ -646,14 +675,12 @@ const Documents = () => {
 
           <div className="flex items-center justify-between">
             <p className="text-xs text-gray-400">
-              {totalCount !== null
-                ? `Showing ${startIndex}–${endIndex} of ${totalCount} documents`
-                : `Showing ${startIndex}–${endIndex}`}
+              Showing {startIndex}–{endIndex} of {totalCount} documents
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={handlePrevPage}
-                disabled={currentPage <= 1 || pageLoading}
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-40 transition-colors"
               >
                 <ChevronLeft size={13} />
@@ -663,11 +690,11 @@ const Documents = () => {
                 className="min-w-[70px] text-center text-xs font-bold px-3 py-1.5 rounded-lg text-white"
                 style={{ backgroundColor: BRAND }}
               >
-                Page {currentPage}
+                Page {currentPage} of {totalPages}
               </span>
               <button
-                onClick={handleNextPage}
-                disabled={isDone || pageLoading}
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:text-gray-700 disabled:opacity-40 transition-colors"
               >
                 Next

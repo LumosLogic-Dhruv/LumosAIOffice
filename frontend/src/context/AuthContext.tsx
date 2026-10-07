@@ -18,6 +18,7 @@ interface AuthContextType {
   login: (token: string, user: User, csrfToken?: string) => void;
   logout: () => void;
   loading: boolean;
+  updateUser: (patch: Partial<User>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -96,6 +97,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     scheduleRefresh();
   }, [scheduleRefresh]);
 
+  const updateUser = useCallback((patch: Partial<User>) => {
+    setUser(prev => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
   // ── Idle session timeout ─────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
@@ -117,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [user, logout]);
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading }}>
+    <AuthContext.Provider value={{ user, login, logout, loading, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -94,10 +94,8 @@ async def _sync_pdf_task(company_id: str, document: dict) -> None:
 
 async def _sync_pdf(company: dict, document: dict) -> dict:
     try:
-        old_pid = document.get("cloudinaryPdfPublicId")
-        if old_pid:
-            cloudinary.uploader.destroy(old_pid, resource_type="image")
-
+        # NOTE: The previous PDF is intentionally retained so that version
+        # history snapshots keep a valid reference to their PDF (BUG-052).
         html = generate_html(company, document)
         file_name = f"{document.get('type')}_{document['_id']}_{int(time.time() * 1000)}"
         result = await generate_pdf(html, file_name)
@@ -313,11 +311,18 @@ async def edit_ai(request: Request, doc_id: str, req: EditAIRequest, background_
         "updatedAt": doc.get("updatedAt", int(time.time() * 1000)),
     }
 
-    updated = await convex_client.mutation("documents:update", {
+    update_args: dict = {
         "id": doc_id,
         "data": updated_data,
         "versionSnapshot": version_snapshot,
-    })
+    }
+    if isinstance(updated_data, dict):
+        if isinstance(updated_data.get("clientName"), str) and updated_data["clientName"].strip():
+            update_args["clientName"] = updated_data["clientName"].strip()
+        if isinstance(updated_data.get("title"), str) and updated_data["title"].strip():
+            update_args["title"] = updated_data["title"].strip()
+
+    updated = await convex_client.mutation("documents:update", update_args)
 
     background_tasks.add_task(_sync_pdf_task, current_user["companyId"], updated)
     await _log_activity(current_user, updated, "ai_edited")
@@ -341,6 +346,15 @@ async def get_document_history(doc_id: str, current_user: dict = Depends(get_cur
     if not doc or doc["companyId"] != current_user["companyId"]:
         raise HTTPException(status_code=404, detail="Document not found")
     return await convex_client.query("documents:getHistory", {"id": doc_id})
+
+
+@router.delete("/{doc_id}/history/{index}")
+async def delete_document_history_version(doc_id: str, index: int, current_user: dict = Depends(get_current_user)):
+    doc = await convex_client.query("documents:getById", {"id": doc_id})
+    if not doc or doc["companyId"] != current_user["companyId"]:
+        raise HTTPException(status_code=404, detail="Document not found")
+    await convex_client.mutation("documents:deleteHistoryVersion", {"id": doc_id, "index": index})
+    return {"success": True}
 
 
 @router.delete("/{doc_id}")

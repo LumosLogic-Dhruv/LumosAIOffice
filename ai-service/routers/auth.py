@@ -122,11 +122,14 @@ class ResendVerificationRequest(BaseModel):
 def _validate_password_strength(password: str) -> None:
     if len(password) < 8:
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
-    if not any(c.isdigit() or not c.isalpha() for c in password):
-        raise HTTPException(
-            status_code=400,
-            detail="Password must contain at least one number or special character.",
-        )
+    if len(password) > 72:
+        raise HTTPException(status_code=400, detail="Password must be at most 72 characters long.")
+    if not password.strip():
+        raise HTTPException(status_code=400, detail="Password cannot be empty or whitespace only.")
+    if not any(c.isalpha() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one letter.")
+    if not any(c.isdigit() for c in password):
+        raise HTTPException(status_code=400, detail="Password must contain at least one number.")
 
 
 async def _create_and_send_verification(user_id: str, email: str, name: str) -> None:
@@ -145,10 +148,10 @@ async def _create_and_send_verification(user_id: str, email: str, name: str) -> 
 
 @router.post("/register", status_code=201)
 async def register(data: RegisterRequest, response: Response):
-    if len(data.password) < 8:
-        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+    _validate_password_strength(data.password)
 
-    existing = await convex_client.query("users:getByEmail", {"email": data.email})
+    email = (data.email or "").strip().lower()
+    existing = await convex_client.query("users:getByEmail", {"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="An account with this email already exists.")
 
@@ -163,14 +166,14 @@ async def register(data: RegisterRequest, response: Response):
             raise HTTPException(status_code=400, detail="Company name is required.")
         company_id = await convex_client.mutation("companies:create", {
             "name": data.companyName,
-            "email": data.email,
+            "email": email,
             "customFields": [],
         })
         role = "admin"
 
     user_id = await convex_client.mutation("users:create", {
         "name": data.name,
-        "email": data.email,
+        "email": email,
         "password": pwd_context.hash(data.password),
         "role": role,
         "companyId": company_id,
@@ -180,7 +183,7 @@ async def register(data: RegisterRequest, response: Response):
     user = await convex_client.query("users:getById", {"id": user_id})
 
     try:
-        await _create_and_send_verification(user_id, data.email, data.name)
+        await _create_and_send_verification(user_id, email, data.name)
     except Exception:
         pass
 
@@ -189,7 +192,7 @@ async def register(data: RegisterRequest, response: Response):
             company_obj = await convex_client.query("companies:getById", {"id": company_id})
             all_users = await convex_client.query("users:listByCompany", {"companyId": company_id})
             admin = next((u for u in (all_users or []) if u.get("role") == "admin"), None)
-            if admin and admin.get("email") != data.email:
+            if admin and admin.get("email") != email:
                 await send_member_joined_email(
                     admin["email"], data.name, (company_obj or {}).get("name", "your team")
                 )
@@ -202,7 +205,8 @@ async def register(data: RegisterRequest, response: Response):
 
 @router.post("/login")
 async def login(data: LoginRequest, response: Response):
-    user = await convex_client.query("users:getByEmail", {"email": data.email})
+    email = (data.email or "").strip().lower()
+    user = await convex_client.query("users:getByEmail", {"email": email})
     if not user or not pwd_context.verify(data.password, user["password"]):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 

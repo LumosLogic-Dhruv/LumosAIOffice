@@ -51,7 +51,7 @@ const GlobalSearch = ({ open, onClose }: GlobalSearchProps) => {
     }
     setLoading(true);
     try {
-      const lower = q.toLowerCase();
+      const lower = q.trim().toLowerCase();
       const [docsRes, clientsRes, catalogRes] = await Promise.allSettled([
         api.get('/documents'),
         api.get('/clients'),

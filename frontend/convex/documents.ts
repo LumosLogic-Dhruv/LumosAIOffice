@@ -132,3 +132,18 @@ export const remove = mutation({
     return { success: true };
   },
 });
+
+export const deleteHistoryVersion = mutation({
+  args: { id: v.id("documents"), index: v.number() },
+  handler: async (ctx, args) => {
+    const doc = await ctx.db.get(args.id);
+    if (!doc) throw new Error("Document not found");
+    const history = [...(doc.versionHistory ?? [])];
+    if (args.index < 0 || args.index >= history.length) {
+      throw new Error("Invalid history version");
+    }
+    history.splice(args.index, 1);
+    await ctx.db.patch(args.id, { versionHistory: history });
+    return { success: true };
+  },
+});
